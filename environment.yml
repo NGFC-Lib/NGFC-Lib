@@ -1,6 +1,9 @@
 name: capstone-env
 channels:
   - defaults
+  - conda-forge
+  - anaconda
+  - mirror-test
 dependencies:
   - appnope=0.1.0
   - attrs=19.3.0
