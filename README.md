@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 UW DIRECT capstone project Spring 2020.
+
 Collaborators: PNNL, NETL, and ARPA-E.
 
 <img src="./assets/images/PNNL-logo.png" alt="PNNL-logo" height="80" img align="right"> <img src="./assets/images/NETL-logo.jpg" alt="NETL-logo" height="80" img align="right"> <img src="./assets/images/ARPA-E-logo.jpg" alt="ARPA-E-logo" height="80" img align="right">
