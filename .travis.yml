@@ -5,8 +5,6 @@ language: python
 # note that all of the versions listed will be tried
 matrix:
     include:
-        - python: 3.5
-        - python: 3.6
         - python: 3.7
 
 # what branches should be evaluated
