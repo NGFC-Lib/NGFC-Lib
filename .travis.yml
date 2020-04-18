@@ -10,7 +10,7 @@ matrix:
 # what branches should be evaluated
 branches:
     only:
-        - master
+        - Zang-staging
 
 # commands to prepare the conda install - download the latest conda
 # and install it and add to path
