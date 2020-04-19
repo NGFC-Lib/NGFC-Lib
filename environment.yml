@@ -2,6 +2,7 @@ name: idaes-env
 channels:
   - conda-forge
   - defaults
+  - anaconda
 dependencies:
   - ca-certificates=2020.4.5.1
   - certifi=2020.4.5.1
@@ -10,6 +11,7 @@ dependencies:
   - ipopt=3.13.1
   - libblas=3.8.0
   - libcxx=10.0.0
+  - libcxxabi=4.0.1
   - libedit=3.1.20181209
   - libffi=3.2.1
   - liblapack=3.8.0
@@ -57,7 +59,6 @@ dependencies:
     - jupyter-console==6.1.0
     - jupyter-core==4.6.3
     - kiwisolver==1.2.0
-    - libcxxabi==4.0.1
     - libgfortran==4.0.0
     - lxml==4.5.0
     - markupsafe==1.1.1
