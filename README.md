@@ -1,4 +1,4 @@
-# NGFC-Lib <img src="./assets/images/team-logo.png" alt="team-logo" width="100" img align="right">
+# NGFC-Lib <img src="./assets/images/team-logo.png" alt="team-logo" width="120" img align="right">
 
 [![Build Status](https://travis-ci.org/NGFC-Lib/NGFC-Lib.svg?branch=master)](https://travis-ci.org/NGFC-Lib/NGFC-Lib)
 [![Coverage Status](https://coveralls.io/repos/github/NGFC-Lib/NGFC-Lib/badge.svg?branch=master)](https://coveralls.io/github/UW-EnergyForecaster/EnergyForecasters?branch=master)
