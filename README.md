@@ -7,7 +7,7 @@ Python implementation of high-performance C and Fortran codes with a jupyter not
 
 UW DIRECT capstone project Spring 2020. Collaborators: [PNNL](https://www.pnnl.gov/), [NETL](https://www.netl.doe.gov/), and [ARPA-E](https://arpa-e.energy.gov/).
 
-<img src="./assets/images/UW-logo.png" alt="UW-logo" height="60" img align="right"> <img src="./assets/images/PNNL-logo.png" alt="PNNL-logo" height="60" img align="right" > <img src="./assets/images/NETL-logo.jpg" alt="NETL-logo" height="60" img align="right"> <img src="./assets/images/ARPA-E-logo.jpg" alt="ARPA-E-logo" height="50" img align="right"> 
+<img src="./assets/images/UW-logo.png" alt="UW-logo" height="60" img align="right"> <img src="./assets/images/NETL-logo.jpg" alt="NETL-logo" height="60" img align="right"> <img src="./assets/images/ARPA-E-logo.jpg" alt="ARPA-E-logo" height="60" img align="right"> <img src="./assets/images/PNNL-logo.png" alt="PNNL-logo" height="60" img align="right" > 
 <br/><br/>
 
 ## Background
