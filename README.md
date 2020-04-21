@@ -17,6 +17,32 @@ This wrapper includes the following software packages and models:
 2. IDAES pyomo | [Website](http://www.pyomo.org/installation/) | [GitHub](https://github.com/IDAES/pyomo)
 3. Solid Oxide Fuel Cell Multi-Physics Stack Model (SOFC-MP) | [Literature](https://doi.org/10.1016/j.jpowsour.2010.11.123) 
 
+## Python Wrapper for C/ Fortran
+Options include: 
+SWIG, Cython, PyPy, Numba, f2py, ctypes, instant, PyCXX, boost.python
+
+## SWIG - Simplified Wrapper and Interface Generation
+Python allows us to write wrapper functions in C that every object in python is represented by a C structured Py0bject. 
+The purpose of writing the wrapper function is to convert between Py0bject ariables and plain C.
+
+Steps to take:
+1. Make a SWIG interface file
+2. Run SWIG to generate wrapper code
+3. Compile and link the C code and the wrapper code.
+
+[Example](github.com/UiO-IN3110)
+
+For this project: 
+We will create a jupyter notebook that takes in (name of module (header file) and local directory the module is located), then automatically creates SWIG interface file, library function (extension .so) then create python module.
+
+Potential Problem:
+C module: 
+void function_name(double x, double y, double z); let z be output
+then, 
+%include "typemaps.i"
+void function_name(double x, double y, double **OUTPUT)
+For every function call with output imbedded.
+
 ## Contributors
 * Mihyun Kim
 * Henry Lee
