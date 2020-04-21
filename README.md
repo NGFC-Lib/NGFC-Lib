@@ -30,7 +30,7 @@ Steps to take:
 2. Run SWIG to generate wrapper code
 3. Compile and link the C code and the wrapper code.
 
-[Example](github.com/UiO-IN3110)
+[Example](http://github.com/UiO-IN3110)
 
 For this project: 
 We will create a jupyter notebook that takes in (name of module (header file) and local directory the module is located), then automatically creates SWIG interface file, library function (extension .so) then create python module.
