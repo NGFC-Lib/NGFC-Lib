@@ -11,37 +11,31 @@ UW DIRECT capstone project Spring 2020. Collaborators: [PNNL](https://www.pnnl.g
 <br/><br/>
 
 ## Background
-This wrapper includes the following software packages and models:
+There are limited open sources on a solid oxide fuel cell(SOFC) system modelling. This github repo is designed by Team Cost Zero from the University of Washington to create a simple SOFC modelling to allow following uses cases:
+
+Use Cases: 
+1. Estimation of electrical output
+2. Sizing heat exchanger
+3. Stream temperature prediction
+
+Based on a SOFC multi-physics stack model from PNNL, our goal is to create a user-friendly python package with a descriptive Jupyter Notebook  that will yield optimized process modelling given a real sysem operation variables. Our python package will be created based on IDAES Process Systems Engineering Framework using pyomo for calculation/optimization on thermodynamics of the process which are not known to many of process optimization modelling packages in the market. 
 
 1. IDAES Process Systems Engineering Framework (idaes - pse) | [Read the Docs](https://idaes-pse.readthedocs.io/en/stable/) |  [GitHub](https://github.com/IDAES/idaes-pse)
 2. IDAES pyomo | [Website](http://www.pyomo.org/installation/) | [GitHub](https://github.com/IDAES/pyomo)
 3. Solid Oxide Fuel Cell Multi-Physics Stack Model (SOFC-MP) | [Literature](https://doi.org/10.1016/j.jpowsour.2010.11.123) 
 
-## Python Wrapper for C/ Fortran
-Options include: 
-SWIG, Cython, PyPy, Numba, f2py, ctypes, instant, PyCXX, boost.python
+## Model Assumptions
+Again, this process modelling is a prototype and is currently designed to sufficiently model simple SOFC system. 
 
-## SWIG - Simplified Wrapper and Interface Generation
-Python allows us to write wrapper functions in C that every object in python is represented by a C structured Py0bject. 
-The purpose of writing the wrapper function is to convert between Py0bject ariables and plain C.
+1. Basic Mass balance
+2. Energy balance - Simple Nernst Equation
+3. Use of electrical efficiency to account for polarization loss
 
-Steps to take:
-1. Make a SWIG interface file
-2. Run SWIG to generate wrapper code
-3. Compile and link the C code and the wrapper code.
-
-[Example](http://github.com/UiO-IN3110)
-
-For this project: 
-We will create a jupyter notebook that takes in (name of module (header file) and local directory the module is located), then automatically creates SWIG interface file, library function (extension .so) then create python module.
-
-Potential Problem:
-C module: 
-void function_name(double x, double y, double z); let z be output
-then, 
-%include "typemaps.i"
-void function_name(double x, double y, double **OUTPUT)
-For every function call with output imbedded.
+## Future Works
+1. Add additional physical properties package - e.g. Liquid phase.
+2. Incorporate options for more complex electrochemistry calculation - Ohmic, Nernst, activation, concentration overpotentials.
+3. Explore different solvers to maximize the accuracy of the model - Currently using "binary solver" for higher convergence.
+4. Incorporate a python package that will automatically translate the process into flowsheet for better visualization.
 
 ## Contributors
 * Mihyun Kim
