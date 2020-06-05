@@ -31,6 +31,12 @@ Again, this process modelling is a prototype and is currently designed to suffic
 2. Energy balance - Simple Nernst Equation
 3. Use of electrical efficiency to account for polarization loss
 
+## User Guide
+
+1. Clone our github repository
+2. Follow Jupyter Notebook (name to be determined)
+3. For running error: Refer to Idaes/Pyomo
+
 ## Future Works
 1. Add additional physical properties package - e.g. Liquid phase.
 2. Incorporate options for more complex electrochemistry calculation - Ohmic, Nernst, activation, concentration overpotentials.
