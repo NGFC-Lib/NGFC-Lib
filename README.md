@@ -24,6 +24,20 @@ Based on a SOFC multi-physics stack model from PNNL, our goal is to create a use
 2. IDAES pyomo | [Website](http://www.pyomo.org/installation/) | [GitHub](https://github.com/IDAES/pyomo)
 3. Solid Oxide Fuel Cell Multi-Physics Stack Model (SOFC-MP) | [Literature](https://doi.org/10.1016/j.jpowsour.2010.11.123) 
 
+## Use Cases
+Our software is designed to help solid oxide fuel cell researchers with optimizing their process design and reduce their cost in simulation software. Our software is designed based on IDAES and Pyomo which are both free and open source with high credibility in the system. The detailed user guide offered from our team will simplify the modelling even further allowing researchers with or without any background in SOFC process modelling to easily proceed with process optimization. 
+Not only this will allow the calcualtion on power output, flow at steady state and temperature, but, this will allow the users to make decision on the sizing of heat exchangers.
+
+## Functional Specifications
+User interface
+What it does: Solve the  the with 
+Input: environmental setting and feed/exhaust amount
+Output: SOFC energy output, efficiency, and Reformer entrance temperature…...
+Streams and units of the model are set already
+Parameters which user could adjust 
+The fuel & air utilization, moles of methane feed, mole of hydrogen exhaust
+Temperature of air & fuel in to/exhaust out of the FC
+
 ## Model Assumptions
 Again, this process modelling is a prototype and is currently designed to sufficiently model simple SOFC system. 
 
@@ -34,14 +48,14 @@ Again, this process modelling is a prototype and is currently designed to suffic
 ## User Guide
 
 1. Clone our github repository
-2. Follow Jupyter Notebook (name to be determined)
+2. Follow Jupyter Notebook (user_guide.ipynb)
 3. For running error: Refer to Idaes/Pyomo
+Documentation on Idaes/Pyomo could be found in their website
 
 ## Future Works
-1. Add additional physical properties package - e.g. Liquid phase.
-2. Incorporate options for more complex electrochemistry calculation - Ohmic, Nernst, activation, concentration overpotentials.
-3. Explore different solvers to maximize the accuracy of the model - Currently using "binary solver" for higher convergence.
-4. Incorporate a python package that will automatically translate the process into flowsheet for better visualization.
+1. Incorporate options for more complex electrochemistry calculation - Ohmic, Nernst, activation, concentration overpotentials.
+2. Explore different solvers to maximize the accuracy of the model - Currently using "binary solver" for higher convergence.
+3. Incorporate a python package that will automatically translate the process into flowsheet for better visualization.
 
 ## Contributors
 * Mihyun Kim
