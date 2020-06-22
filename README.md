@@ -26,15 +26,14 @@ Based on a SOFC multi-physics stack model from PNNL, our goal is to create a use
 
 ## Use Cases
 Our software is designed to help solid oxide fuel cell researchers with optimizing their process design and reduce their cost in simulation software. Our software is designed based on IDAES and Pyomo which are both free and open source with high credibility in the system. The detailed user guide offered from our team will simplify the modelling even further allowing researchers with or without any background in SOFC process modelling to easily proceed with process optimization. 
-Not only this will allow the calcualtion on power output, flow at steady state and temperature, but, this will allow the users to make decision on the sizing of heat exchangers.
+Not only this will allow the calcualtion on power output, flow at steady state and temperature, and flow diagram of overall plant design, but, this will also allow the users to make decision on the sizing of heat exchangers.
 
 ## Functional Specifications
 User interface
-What it does: Solve the  the with 
 Input: environmental setting and feed/exhaust amount
 Output: SOFC energy output, efficiency, and Reformer entrance temperature…...
 Streams and units of the model are set already
-Parameters which user could adjust 
+Parameters which user could adjust: 
 The fuel & air utilization, moles of methane feed, mole of hydrogen exhaust
 Temperature of air & fuel in to/exhaust out of the FC
 
