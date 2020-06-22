@@ -29,11 +29,7 @@ Our software is designed to help solid oxide fuel cell researchers with optimizi
 Not only this will allow the calcualtion on power output, flow at steady state and temperature, and flow diagram of overall plant design, but, this will also allow the users to make decision on the sizing of heat exchangers.
 
 ## Functional Specifications
-User interface
-    What it does: Solve the SOFC problem and make the prediction
-    Input: environmental setting and feed/exhaust amount
-    Output: SOFC energy output, efficiency, Burner exhaust temperature, and Reformer entrance temperature…...
-    Note: Streams and units of the model are set already
+User interface  What it does: Solve the SOFC problem and make the prediction  Input: environmental setting and feed/exhaust amount  Output: SOFC energy output, efficiency, Burner exhaust temperature, and Reformer entrance temperature…...  Note: Streams and units of the model are set already
 
 Parameters which user could adjust: 
 1. Fuel & air utilization, moles of methane feed
