@@ -50,7 +50,7 @@ Again, this process modelling is a prototype and is currently designed to suffic
 ## User Guide
 
 1. Clone our github repository
-2. Follow Jupyter Notebook (user_guide.ipynb)
+2. Follow Jupyter Notebook (user_guide.ipynb) https://github.com/NGFC-Lib/NGFC-Lib/blob/master/jupyter/idaes-pse-NGFC-model/user_guide.ipynb
 3. For running error: Refer to Idaes/Pyomo
 Documentation on Idaes/Pyomo could be found in their website
 
