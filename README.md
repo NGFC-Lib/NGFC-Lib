@@ -11,14 +11,7 @@ Repo Set-up: UW DIRECT capstone project Spring 2020. Collaborators: [PNNL](https
 <br/><br/>
 
 ## Background
-There are limited open sources on a solid oxide fuel cell(SOFC) system modelling. This github repo is designed by Team Cost Zero from the University of Washington to create a simple SOFC modelling to allow following uses cases:
-
-Use Cases: 
-1. Estimation of electrical output
-2. Sizing heat exchanger
-3. Stream temperature prediction
-
-Based on a SOFC multi-physics stack model from PNNL, our goal is to create a user-friendly python package with a descriptive Jupyter Notebook  that will yield optimized process modelling given a real sysem operation variables. Our python package will be created based on IDAES Process Systems Engineering Framework using pyomo for calculation/optimization on thermodynamics of the process which are not known to many of process optimization modelling packages in the market. 
+Based on a SOFC multi-physics stack model from PNNL and the IDAES Framework, our goal is to create a collection of user-friendly Jupyter Notebooks that will yield optimized process modelling given a real sysem operation variables. Our examples will be created based on IDAES Process Systems Engineering Framework using pyomo for calculation/optimization on thermodynamics of the process which are not known to many of process optimization modelling packages in the market. 
 
 1. IDAES Process Systems Engineering Framework (idaes - pse) | [Read the Docs](https://idaes-pse.readthedocs.io/en/stable/) |  [GitHub](https://github.com/IDAES/idaes-pse)
 2. IDAES pyomo | [Website](http://www.pyomo.org/installation/) | [GitHub](https://github.com/IDAES/pyomo)
@@ -66,7 +59,8 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
-## Contributors
+## DIRECT Contributors
 * Mihyun Kim
 * Henry Lee
 * Zang Le
+* Erica Eggleton - lead
