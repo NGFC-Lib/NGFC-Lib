@@ -3,9 +3,9 @@
 [![Build Status](https://travis-ci.org/NGFC-Lib/NGFC-Lib.svg?branch=master)](https://travis-ci.org/NGFC-Lib/NGFC-Lib)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Python implementation of high-performance C and Fortran codes with a jupyter notebook framework to model natural-gas fuel cell systems. Includes software tools developed by the Institute for the Design of Advanced Energy Systems (IDAES) and machine learning tools for fuel cell optimization.
+This project utilizes software tools developed by the Institute for the Design of Advanced Energy Systems (IDAES), physics-based models, and machine learning tools for fuel cell optimization.
 
-UW DIRECT capstone project Spring 2020. Collaborators: [PNNL](https://www.pnnl.gov/), [NETL](https://www.netl.doe.gov/), and [ARPA-E](https://arpa-e.energy.gov/).
+Repo Set-up: UW DIRECT capstone project Spring 2020. Collaborators: [PNNL](https://www.pnnl.gov/), [NETL](https://www.netl.doe.gov/), and [ARPA-E](https://arpa-e.energy.gov/).
 
 <img src="./assets/images/UW-logo.png" alt="UW-logo" height="60" img align="right"> <img src="./assets/images/NETL-logo.jpg" alt="NETL-logo" height="60" img align="right"> <img src="./assets/images/ARPA-E-logo.jpg" alt="ARPA-E-logo" height="60" img align="right"> <img src="./assets/images/PNNL-logo.png" alt="PNNL-logo" height="60" img align="right" > 
 <br/><br/>
