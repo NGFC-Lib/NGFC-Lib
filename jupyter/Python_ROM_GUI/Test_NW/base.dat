@@ -1,0 +1,198 @@
+CELL PARAMETERS
+nLayers = 10
+nSpecies = 6
+Thickness = 250.0
+Tortuosity = 2.5
+Porosity  = 30.0
+PoreRadius  = 0.5
+ElectrolyteThickness = 150.0
+InterconnectThickness = 1500.0
+CathodeThickness = 50.0
+CathodePorosity = 30.0
+CathodeTortuosity = 2.5
+AnodeThickness = 50.0
+AnodePorosity = 30.0
+
+CONTACT RESISTANCE PARAMETERS
+ScaleThickness  = 30.0
+PreExponent = 10.0
+ActivationEnergy = 0.20
+
+CATHODE RESISTANCE PARAMETERS
+CathodePreExponent = 575955.0 
+CathodeActivationEnergy = 0.117
+
+CATHODE BUTLER-VOLMER PARAMETERS
+BV_AlphaCoefficient = 0.55
+BV_ActivationEnergy = 1.2
+BV_PreExponent_a = -120
+BV_PreExponent_b = 2.3e5
+
+CATHODE O2 DEPLETION PARAMETERS
+CathodeDepletionCoefficient_a = 3
+CathodeDepletionCoefficient_b = -35
+
+ANODE DEPLETION POLARIZATION PARAMETERS
+LOP_slope = 0.2027
+LOP_is = -8.897e-4
+LOP_ii = 0.5221
+AOP_ns = 2.439e-3
+AOP_ni = -2.358
+AOP_qs = 1.747e-2
+AOP_qi = -17.73
+AOP_ms = -1.158e-2
+AOP_mi = 11.06
+AOP_ps = 6.560e-4
+AOP_pi = -1.152
+
+SystemPressure = 1.0
+
+FUEL PARAMETERS (FLOW RATE IS MOLE/SEC; TEMP IS K)
+FuelFlowRate = 0.00020325
+FuelTemperature = 900
+FuelTonTop = 900
+FuelH2 = 0.90
+FuelH2O = 0.10
+FuelCO = 0.00
+FuelCO2 = 0.00
+FuelCH4 = 0.00
+FuelN2 = 0.00
+
+OXIDANT PARAMETERS (FLOW RATE IS MOLE/SEC; TEMP IS K)
+OxidantFlowRate = 0.0030485
+OxidantTemperature = 900
+OxidantTonTop = 900
+OxidantO2 = 0.21
+OxidantN2 = 0.79
+
+DIMENSION IN DIRECTION OF GAS FLOW (M)
+Ax = 0.1
+
+DIMENSION PERPENDICULAR TO GAS FLOW (M)
+Ay = 0.1
+
+NUMBER OF INCREMENTS PER CELL
+Nx = 100
+
+NUMBER OF CELLS IN STACK
+nCells=1
+
+Simulation_Option=1
+Average_CurrentDensity=3000
+StackVoltage=0.7082
+Average_CellVoltage=0.7098
+ShortCurrent=0.0
+DISTANCE REQUIRED TO REACH GAS EQUILIBRIUM
+EquilibriumPathCO = 0.001
+EquilibriumPathCH4 = 0.01
+
+EMISSIVITY OF INTERCONNECT AND CELL
+InterConnectEmittance = 0.5
+PENEmittence = 0.5
+
+THICKNESSES OF BOTTOM, INTERCONNECT, TOP PLATE AND PEN
+BottomPlateH = 0.000946
+InterConnectPlateH = 0.001393
+TopPlateH = 0.000946
+PEN_H = 0.00025
+
+THERMAL COND. OF BOTTOM, INTERCONNECT, TOP PLATE AND PEN
+BottomPlateHC = 2.0
+InterConnectPlateHC = 2.0
+TopPlateHC = 2.0
+PEN_HC = 2.0
+
+HEIGHT OF GAS FLOW PASSAGES
+AirFlowH = 0.000554
+FuelFLowH = 0.000554
+
+OxidantSolidFilmCoefficient = 134.0
+FuelSolidFilmCoefficient = 510.0
+
+SWITCH:COFLOW IS 1, COUNTERFLOW IS 0
+CoFlowFlag = 1
+
+relaxation parameter between old T distribution and new T distribution
+T_Relaxation = 0.5
+T_precision = 0.05
+maximum temperature admissible in iterations (C)
+T_TopLimit = 1420.0
+
+minimum temperature admissible in iterations (C)
+T_BottomLimit = 580.0
+
+maximum admissible total current difference in the cells in stack
+CurrentTolerance = 0.001
+
+voltage increment for the cell during multicell stack solution
+VoltageIncrement = 0.001
+VoltageIterationLimit = 5
+
+TopEnvironmentT = 950
+TopFilmCoefficient = .00010
+TopEmissivity = 0.00003
+TopSIFilmCoefficient = .010000
+TopSIEmissivity = 0.009
+TopIsolationH = 0.2
+TopIsolationHC = 0.006
+TopGeometryScale = 10e-8
+
+
+BottomEnvironmentT = 950
+BottomFilmCoefficient = .00010
+BottomEmissivity = 0.00003
+BottomSIFilmCoefficient = .010000
+BottomSIEmissivity = 0.009
+BottomIsolationH = 0.2
+BottomIsolationHC = 0.006
+BottomGeometryScale = 10e-8
+
+FrontEnvironmentT = 950
+FrontFilmCoefficient = .00010
+FrontEmissivity = 0.00003
+FrontSIFilmCoefficient = .010000
+FrontSIEmissivity = 0.009
+FrontIsolationH = 0.2
+FrontIsolationHC = 0.006
+FrontGeometryScale = 10e-8
+
+BackEnvironmentT = 950
+BackFilmCoefficient = .00010
+BackEmissivity = 0.00003
+BackSIFilmCoefficient = .010000
+BackSIEmissivity = 0.009
+BackIsolationH = 0.2
+BackIsolationHC = 0.006
+BackGeometryScale = 10e-8
+
+SideEnvironmentT = 950
+SideFilmCoefficient = 0.000010
+SideEmissivity = 0.000003
+SideSIFilmCoefficient = 0.000010
+SideSIEmissivity = 0.000003
+SideIsolationH = 0.20000111
+SideIsolationHC = 0.0006
+SideGeometryScale = 10e-8
+
+InletArea = 0.0001
+InletHC = 20.0
+InletL = 0.003
+OutletArea = 0.0001
+OutletHC = 20.0
+OutletL = 0.003
+BoundaryFlag = 2
+
+CP_pen = 400.0
+CP_plate = 400.0
+
+EC_Model_Option = 4
+VTC = -0.017
+UserDefinedHeat = 1
+QuasiTransient = 0
+TimeStep=0.1
+LimitTiterations = 50
+PrintBalances = 1
+HaveConductionOnInlet = 0
+
+H2_Threshold=0.01
+H2_Threshold_Current=0.01

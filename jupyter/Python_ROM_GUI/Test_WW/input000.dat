@@ -1,0 +1,481 @@
+#CELL PARAMETERS
+
+#===========================================#
+
+#          FLOW GEOMETRY SWITCH             #
+
+# (co-flow is 1, counter-flow is 0)         #
+
+#===========================================#
+CoFlowFlag = 0
+HeatNotOnPEN=1
+FrecLimit = 0.9
+
+#===========================================#
+
+#        STACK GEOMETRY PARAMETERS          #
+
+#===========================================#
+
+# dimension along flow (m)               |
+Ax = 0.23452
+
+# dimension perpendicular to flow (m)    |
+Ay = 0.23452
+
+# number of cells                        |
+nCells = 1
+
+# solid layer thickness (m)              |
+BottomPlateH = 0.005
+PEN_H = 0.00034
+InterConnectPlateH = 0.0005
+TopPlateH = 0.005
+
+# flow channel height (m)                |
+AirFlowH = 0.001
+FuelFLowH = 0.0005
+
+# inlet/outlet manifold area (m^2) and   |
+
+# length (m)                             |
+InletArea = 0.0001
+InletL = 0.003
+OutletArea = 0.0001
+OutletL = 0.003
+
+# set to 1 for cell-to-cell variations   |
+Cell_Variation = 0
+
+#===========================================#
+
+#        AIR-FUEL FLOW PARAMETERS           #
+
+# pressure (atm), flow rate (mol/s),        #
+
+# temp (K)                                  #
+
+#===========================================#
+SystemPressure = 1.0
+
+# fuel inlet state                       |
+FuelNGH2O=0.0
+FuelNGAr=0.0
+FuelNGCO2=74.0729
+FuelNGO2=0.0
+FuelNGN2=118.5167
+FuelNGCH4=6896.1885
+FuelNGCO=0.0
+FuelNGH2=0.0
+FuelNGC2H6=237.0333
+FuelNGC3H8=51.8510
+FuelNGC4H10=29.6292
+FuelNGTemperature=90
+FuelNGHTXDeltaT=15
+FuelNGFlowRate=0.008
+FuelNGRecirculationRate=0.67
+
+# oxidant inlet state                    |
+OxidantFlowRate = 0.0183
+OxidantTemperature = 740.0
+OxidantTOnTop = 741.0
+StackOxidantFlowRateO2=0.008551
+StackOxidantFlowRateN2=0.03391
+StackOxidantFlowRateH2O=0.0004567
+StackOxidantFlowRateCO2=0.00001317
+StackOxidantFlowRateAr=0.0004128
+
+#===========================================#
+
+#          STACK SOLUTION MODE              #
+
+#           Simulation_Option               #
+
+#===========================================#
+
+#
+Simulation_Option = 2
+
+#
+
+#-----------------------------------------
+
+# Mode 0: cell average voltage (V)       |
+
+#   Average_CellVoltage [0.7]            |
+
+#-----------------------------------------
+Average_CellVoltage = 0.832647
+
+#
+
+#-----------------------------------------
+
+# Mode 1: total stack voltage (V)        |
+
+#   StackVoltage                         |
+
+#-----------------------------------------
+StackVoltage = 0.832647
+
+#
+
+#-----------------------------------------
+
+# Mode 2: current density (A/m^2)        |
+
+#   Average_CurrentDensity               |
+
+#-----------------------------------------
+Average_CurrentDensity = 4000
+
+#
+
+#-----------------------------------------
+
+# Mode 3: fixed fuel utilization         |
+
+#   Fuel_Utilization                     |
+
+#-----------------------------------------
+Fuel_Utilization = 0.7512
+
+#
+
+#-----------------------------------------
+
+# Mode 4: solve the stack V-I curve      |
+
+#         using fixed fuel/air rates     |
+
+#   Average_CellVoltage_Low [0.55]       |
+
+#   Average_CellVoltage_High [0.85]      |
+
+#   Average_CellVoltage_Increment [0.1]  |
+
+#   Convergence_Utilization [0.05=5%]    |
+
+# Mode 5: solve the stack V-I curve      |
+
+#         using fixed fuel utilization   |
+
+#   Fuel_Utilization                     |
+
+#   Oxidant_Utilization                  |
+
+#-----------------------------------------
+Average_CellVoltage_Low=0.60
+Average_CellVoltage_High=1.0
+Average_CellVoltage_Increment=0.1
+Oxidant_Utilization = 0.0666
+Convergence_Utilization=0.01
+
+#
+
+#-----------------------------------------
+
+# Multi-step option for quasi-transient  |
+
+#   0 = no Multi-Step calculation        |
+
+#   1 = air T                            |
+
+#   2 = fuel T                           |
+
+#   3 = air + fuel T                     |
+
+#   4 = air rate                         |
+
+#   5 = fuel rate                        |
+
+#   6 = air + fuel rate                  |
+
+#   7 = furnace temperature              |
+
+#-----------------------------------------
+MultiStep = 0
+
+#
+
+#-----------------------------------------
+
+# Solution Restart Option                |
+
+# 0 = use prior solution                 |
+
+# 1 = start fresh and skip saved state   |
+
+#-----------------------------------------
+SkipSavedState = 1
+
+#===========================================#
+
+#       ELECTROCHEMISTRY OPTIONS            #
+
+#===========================================#
+
+# I-V relation: internal is 0,           |
+
+# subroutine is 4                        |
+EC_Model_Option = 4
+
+# short current switch?                  |
+ShortCurrent=0.0
+
+# CH4 consumption option                 |
+
+# 0 is path length, 2 is Achenbach rate  |
+
+# expression, 3 is user subroutine       |
+CH4_Option = 3
+
+# species equilibrium distance (m)       |
+EquilibriumPathCO = 0.001
+EquilibriumPathCH4 = 0.01
+
+#===========================================#
+
+#      SOLUTION CONTROL PARAMETERS          #
+
+#===========================================#
+
+# number of increments                   |
+Nx = 100
+
+# timestep for counter-flow              |
+TimeStep = 0.015
+
+# temp iteration relaxation factor       |
+T_Relaxation = 1.0
+
+# temperature iteration limits (C)       |
+T_TopLimit = 1400.0
+T_BottomLimit = 500.0
+
+# multicell voltage increment            |
+VoltageIncrement = 0.001
+
+# minimum threshold on H2                |
+H2_Threshold = 0.0001
+H2_Threshold_Current = 0.0001
+
+# maximum voltage/temperature iterations #
+VoltageIterationLimit = 50
+LimitTiterations = 500
+
+# gas heat capacity                      |
+
+# (user defined is 1, CEA is 0)          |
+UserDefinedHeat = 1
+
+# quasi-transient switch                 |
+
+# (not used is 0, hold temperature is 1) #
+QuasiTransient = 0
+
+# manifold conduction?                   |
+HaveConductionOnInlet = 0
+
+# print species balance info (1 = yes)   |
+PrintBalances = 0
+
+# Electrode diffusion calculations       |
+
+# 0 is perform as before, 1 is do not    |
+
+# peform                                 |
+NoDiffusion = 1
+
+# print diffusion results (1 is yes)     |
+PrintDiffusionDifference = 0
+
+#===========================================#
+
+#         CONVERGENCE PARAMETERS            #
+
+#===========================================#
+
+# max temp variation between iterations  |
+T_precision = 0.01
+
+# max cell current density variation     |
+
+# from stack nominal value               |
+CurrentTolerance = 0.05
+
+#===========================================#
+
+#           MATERIAL PROPERTIES             #
+
+#===========================================#
+
+# film coefficient (W/m^2-K)             |
+OxidantSolidFilmCoefficient = 200.0
+FuelSolidFilmCoefficient = 700.0
+
+# emissivity                             |
+InterConnectEmittance = 0.7
+PENEmittence = 0.7
+
+# thermal conductivity (W/m-K)           |
+BottomPlateHC = 25.0
+InterConnectPlateHC = 25.0
+TopPlateHC = 25.0
+PEN_HC = 4.0
+InletHC = 25.0
+OutletHC = 25.0
+
+# Solid to solid conductivity            |
+PEN_Air_IC_K = 25.0
+IC_Fuel_PEN_K = 90.0
+PEN_Air_IC_CR = 0.2
+IC_Fuel_PEN_CR = 0.05
+
+# specific heat capacity (J/kg-K)        |
+CP_pen = 400.0
+CP_plate = 400.0
+
+#===========================================#
+
+#           BOUNDARY CONDITIONS             #
+
+# temp (C), film (W/m^2-K), H (m),          #
+
+# HC (W/m-K)                                #
+
+#===========================================#
+
+# BC flag 0 is adiabatic                 |
+
+# BC flag 1 is ambient temperature       |
+
+# BC flag 2 is insulation layer          |
+BoundaryFlag = 0
+
+# top                                    |
+TopEnvironmentT = 750
+TopFilmCoefficient = 1.5
+TopEmissivity = 0.7
+TopSIFilmCoefficient = 1000.0
+TopSIEmissivity = 0.9
+TopIsolationH = 0.25
+TopIsolationHC = 25.0
+TopGeometryScale = 2.5e-6
+
+# bottom                                 |
+BottomEnvironmentT = 750
+BottomFilmCoefficient = 0.3
+BottomEmissivity = 0.7
+BottomSIFilmCoefficient = 1000.0
+BottomSIEmissivity = 0.9
+BottomIsolationH = 0.25
+BottomIsolationHC = 25.0
+BottomGeometryScale = 2.5e-6
+
+# front                                  |
+FrontEnvironmentT = 750
+FrontFilmCoefficient = 0.3
+FrontEmissivity = 0.7
+FrontSIFilmCoefficient = 1000.0
+FrontSIEmissivity = 0.9
+FrontIsolationH = 0.12
+FrontIsolationHC = 25.0
+FrontGeometryScale = 1.3
+
+# back                                   |
+BackEnvironmentT = 750
+BackFilmCoefficient = 0.3
+BackEmissivity = 0.7
+BackSIFilmCoefficient = 1000.0
+BackSIEmissivity = 0.9
+BackIsolationH = 0.12
+BackIsolationHC = 25.0
+BackGeometryScale = 1.3
+
+# sides                                  |
+SideEnvironmentT = 750
+SideFilmCoefficient = 0.3
+SideEmissivity = 0.7
+SideSIFilmCoefficient = 1000.0
+SideSIEmissivity = 0.9
+SideIsolationH = 0.03
+SideIsolationHC = 25.0
+SideGeometryScale = 2.0
+
+#===========================================#
+
+#           ELECTRODE DIFFUSION             #
+
+# thickness and radius in (micron)          #
+
+# porosity in (%)                           #
+
+#===========================================#
+nLayers = 3
+nSpecies = 6
+Thickness = 250.0
+Tortuosity = 1.1
+Porosity  = 55.0
+PoreRadius  = 0.5
+ElectrolyteThickness = 150.0
+InterconnectThickness = 1500.0
+CathodeThickness = 50.0
+CathodePorosity = 55.0
+CathodeTortuosity = 1.1
+AnodeThickness = 50.0
+AnodePorosity = 55.0
+
+#===========================================#
+
+#     INTERNAL I-V CURVE PARAMETERS         #
+
+#===========================================#
+
+# contact resistance                     |
+ScaleThickness  = 30.0
+PreExponent = 10.0
+ActivationEnergy = 0.20
+
+# cathode resistance                     |
+CathodePreExponent = 575955.0
+CathodeActivationEnergy = 0.117
+
+# cathode BV activation                  |
+BV_AlphaCoefficient = 0.55
+BV_ActivationEnergy = 1.2
+BV_PreExponent_a = -120
+BV_PreExponent_b = 2.3e5
+
+# cathode O2 depletion                   |
+CathodeDepletionCoefficient_a = 3
+CathodeDepletionCoefficient_b = -35
+
+# anode depletion
+LOP_slope = 0.2027
+LOP_is = -8.897e-4
+LOP_ii = 0.5221
+AOP_ns = 2.439e-3
+AOP_ni = -2.358
+AOP_qs = 1.747e-2
+AOP_qi = -17.73
+AOP_ms = -1.158e-2
+AOP_mi = 11.06
+AOP_ps = 6.560e-4
+AOP_pi = -1.152
+
+# misecellaneous                         #
+VTC = -0.017
+
+# ADDED FEATURES
+ModelManifold = 0
+FuelRecycle = 0
+FuelRecyclePercent = 10
+OxidantRecycle = 0
+OxidantRecyclePercent = 20
+ModelFuelHTX = 0
+ModelAirHTX = 0
+PSystem = 1.0
+FlowChannelModel = 0
+
+
