@@ -1,6 +1,6 @@
 # Python_ROM_GUI
 The universal ROM GUI can be used for SOFC-MP simulation:  
-	1. To be able to use this ROM GUI, the user need to download the "pySOFC_v12_Release_v1.ipynb", "pySOFC_v12_Release_v1.py" and the "source" folder to the same directory.  
+	1. To be able to use this ROM GUI, the user need to download the "pySOFC.ipynb", "pySOFC.py" and the "source" folder to the same directory.  
 	2. The user also needs to install essential packages to the Jupyter Notebook, and also the windows subsystem for linux if the user plans to run simulations on PC.
 
 Follow the step-by-step instructions in the Jupyter Notebook:
