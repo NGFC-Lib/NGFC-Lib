@@ -1,0 +1,16 @@
+Nodes 4
+T 923.e0  973.0e0 1023.0e0 1073.0e0
+B 0.031e0 0.0281e0 0.0248e0 0.0247e0
+I 0.051e4 0.107e4  0.113e4  0.132e4
+P_O2  0.21e0
+P_air 1.0e0
+CathodeBasis 7.5e-4
+AnodeBasis   7.5e-4
+P_H2 0.96
+IO2 0.051e4 0.107e4 0.113e4 0.132e4
+IH2 3.18e4  4.74e4  4.95e4  5.65e4
+Voltage 0.7
+Anode  1.0e6  0.3
+Cathode  0.117  5.76e7  0.3
+Electrolyte  8.59e-8  -0.00011  0.0462  -6.54
+Interconnect  0.138   8.8e7

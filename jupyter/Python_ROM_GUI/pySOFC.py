@@ -165,9 +165,10 @@ def variable_options(display = False):
         "VGRH2OPassRate",
         "VGRH2PassRate",
         "VGRCO2CaptureRate",
-        "VGRCOConvertRate"
+        "VGRCOConvertRate",
+        "FuelFlowRate",
+        "OxidantFlowRate"
     ]
-    
     units = [
         "V",
         "A/m^2",
@@ -177,12 +178,12 @@ def variable_options(display = False):
         "mol/s",
         "C",
         "-",
-        "mol/s",
-        "mol/s",
-        "mol/s",
-        "mol/s",
-        "mol/s",
-        "mol/s",
+        "-",
+        "-",
+        "-",
+        "-",
+        "-",
+        "-",
         "C",
         "C",
         "%",
@@ -194,11 +195,11 @@ def variable_options(display = False):
         "-",
         "%",
         "-",
-        "mol/s",
-        "mol/s",
-        "mol/s",
-        "mol/s",
-        "mol/s",
+        "-",
+        "-",
+        "-",
+        "-",
+        "-",
         "C",
         "C",
         "-",
@@ -227,7 +228,9 @@ def variable_options(display = False):
         "-",
         "-",
         "-",
-        "-"
+        "-",
+        "mol/s",
+        "mol/s"
     ]
     
     if display == True:
@@ -235,7 +238,7 @@ def variable_options(display = False):
         for i in range(len(names)):
             print(i+1, ':', names[i]+', ['+units[i]+']', end = '\t\n')
     return names, units
-        
+
 class sys_preprocessor():  
     def NGFC_ccs(self, J,FU,AU,OCR,IR,Arec,PreReform,cellsize):
         Nspecies = 11
@@ -4229,6 +4232,448 @@ def createcases(work_path, source_path, inputbasefilename,
     else:
         print('End of code\n')
 
+def createcases_SV(work_path, source_path, inputbasefilename, 
+                preprocessor_enabled = False, preprocessor_name = None, 
+                igfc = None):
+    '''
+    The function creates cases based on LHS.dat
+    '''
+    print('############################################################\
+            \nCreate case folders on the local machine\
+            \n############################################################')
+    # preprocessor_name:  "NGFC_ccs", "NGFC_nocc", "IGFC_ccs", "NGFC_ccs_vgr", "IGFC_ccs_vgr"
+    # igfc:         "conventional", "enhanced", "catalytic"
+    
+    ## load LHS_file
+    name_tmp = []
+    value_tmp = []
+    filename = work_path+'/LHS.dat'
+    with open(filename) as f:
+        i = 0
+        for line in f.readlines():
+            if i == 1:
+                name_tmp = line.strip().split()
+            elif i > 1:
+                linestr = line.strip().split()
+                linenum = [float(lineele) for lineele in linestr]
+                value_tmp.append(linenum)
+            i += 1
+    value_tmp = np.array(value_tmp)
+    LHSvalue = value_tmp[:,1:]
+    Ncase, Nvar = LHSvalue.shape
+    len_tmp = len(name_tmp)
+    LHSname = np.array(name_tmp[len_tmp-Nvar:len_tmp])
+    
+    ## create folders and copy essential files
+    path_tmp = work_path+'/Cases'
+    if not os.path.exists(path_tmp):
+        os.mkdir(path_tmp)
+    else:
+        query = query_yes_no('"cases" folder already exists on the local machine, do you want to overwrite it?')
+        if query == False:
+            pass
+    
+    indpreprocessorfailed = []
+    for i in range(Ncase):
+        path_tmp = work_path+'/Cases/Case'+str(i).zfill(5)
+        if not os.path.exists(path_tmp):
+            os.mkdir(path_tmp)
+        
+        filename = 'ButlerVolmer.inp'
+        source = source_path+'/'+filename
+        target = path_tmp+'/'+filename
+        shutil.copy2(source, target)
+        filename = 'thermo.lib'
+        source = source_path+'/'+filename
+        target = path_tmp+'/'+filename
+        shutil.copy2(source, target)
+        filename = 'trans.lib'
+        source = source_path+'/'+filename
+        target = path_tmp+'/'+filename
+        shutil.copy2(source, target)
+        filename = 'VoltageOnCurrent.dat'
+        source = work_path+'/'+filename
+        target = path_tmp+'/'+filename
+        shutil.copy2(source, target)
+        filename = 'MultiStepInput.dat'
+        source = work_path+'/'+filename
+        target = path_tmp+'/'+filename
+        shutil.copy2(source, target)
+        
+        ## generate romSOFCMP2D4ROM.inp
+        outputfilename = path_tmp+'/'+'romSOFCMP2D4ROM.inp'
+        lines = ["@model="+inputbasefilename+"\n"]
+        for j in range(Nvar):
+            line = LHSname[j]+"="+str(LHSvalue[i, j])+"\n"
+            lines.append(line)
+        inp_base=open(inputbasefilename,"r")
+        lines_inp=inp_base.readlines()
+        for j in range(len(lines_inp)):
+            str00=lines_inp[j].split('=')
+            str00[0]=str00[0].rstrip()
+            str00[0]=str00[0].lstrip()
+        inp_w=open(outputfilename,"w")
+        inp_w.writelines(lines)
+        inp_w.close()
+        
+        ## generate sofc4rom.dat
+        if preprocessor_enabled == True:
+            # load romSOFCMP2D4ROM.inp        
+            inputfilename = path_tmp+'/'+'romSOFCMP2D4ROM.inp'
+            text_file=open(inputfilename,"r")
+            lines = text_file.readlines()
+            df0 = pd.DataFrame(np.array([['1a', '1b', '1c']]),columns=['Name', 'Value', 'Called'])
+            df1 = pd.DataFrame(columns=['Name', 'Value', 'Called'])
+            for j in range(len(lines)):
+                if j>0:
+                    str01 = lines[j].split('=')
+                    str01[0]=str01[0].rstrip()
+                    str01[0]=str01[0].lstrip()
+                    df0['Name']=str01[0]
+                    df0['Value']=float(str01[1])
+                    df0['Called']=False
+                    df1=pd.concat([df1,df0],sort=False,ignore_index=True)
+            
+            # load inputbasefilename (base.dat or input000.dat)
+            text_file=open(inputbasefilename,"r")
+            lines = text_file.readlines()
+            df2 = pd.DataFrame(np.array([['1a', '1b', '1c']]),columns=['Name', 'Value', 'Updated'])
+            df3 = pd.DataFrame(columns=['Name', 'Value', 'Updated']) # currently, "Updated" feature not active
+            for j in range(len(lines)):
+                str01 = lines[j].split('=')
+                if len(str01) == 2:
+                    str01[0]=str01[0].rstrip()
+                    str01[0]=str01[0].lstrip()
+                    try:
+                        df2['Name']=str01[0]
+                        df2['Value']=float(str01[1])
+                        df2['Updated']=False
+                        df3=pd.concat([df3,df2],sort=False,ignore_index=True)
+                    except:
+                        pass
+            
+            ## Call "preprocessor" function
+            # "preprocessor" input #1
+            try:
+                J=df1.loc[df1["Name"]=="Average_CurrentDensity","Value"].iloc[0]/10.0 # convert from A/m2 to mA/cm2
+                df1.loc[df1["Name"]=="Average_CurrentDensity","Called"]=True
+            except:
+                try:
+                    J=df3.loc[df3["Name"]=="Average_CurrentDensity","Value"].iloc[0]/10.0  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            # "preprocessor" input #2
+            try:
+                FU=df1.loc[df1["Name"]=="Stack_Fuel_Utilization","Value"].iloc[0]
+                df1.loc[df1["Name"]=="Stack_Fuel_Utilization","Called"]=True
+            except:
+                try:
+                     FU=df3.loc[df3["Name"]=="Stack_Fuel_Utilization","Value"].iloc[0] 
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            # "preprocessor" input #3
+            try:
+                AU=df1.loc[df1["Name"]=="Stack_Oxidant_Utilization","Value"].iloc[0]
+                df1.loc[df1["Name"]=="Stack_Oxidant_Utilization","Called"]=True
+            except:
+                try:
+                     AU=df3.loc[df3["Name"]=="Stack_Oxidant_Utilization","Value"].iloc[0]
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            # "preprocessor" input #4
+            try:
+                OCR=df1.loc[df1["Name"]=="OxygenToCarbon_Ratio","Value"].iloc[0]
+                df1.loc[df1["Name"]=="OxygenToCarbon_Ratio","Called"]=True
+            except:
+                try:
+                     OCR=df3.loc[df3["Name"]=="OxygenToCarbon_Ratio","Value"].iloc[0]
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            # "preprocessor" input #5
+            try:
+                IR=df1.loc[df1["Name"]=="Internal_Reforming","Value"].iloc[0]
+                df1.loc[df1["Name"]=="Internal_Reforming","Called"]=True
+            except:
+                try:
+                     IR=df3.loc[df3["Name"]=="Internal_Reforming","Value"].iloc[0]
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            # "preprocessor" input #6
+            try:
+                Arec=df1.loc[df1["Name"]=="Oxidant_Recirculation","Value"].iloc[0]
+                df1.loc[df1["Name"]=="Oxidant_Recirculation","Called"]=True
+            except:
+                try:
+                     Arec=df3.loc[df3["Name"]=="Oxidant_Recirculation","Value"].iloc[0]
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')        
+            
+            # "preprocessor" input #7
+            try:
+                PreReform=df1.loc[df1["Name"]=="PreReform","Value"].iloc[0]
+                df1.loc[df1["Name"]=="PreReform","Called"]=True
+            except:
+                try:
+                     PreReform=df3.loc[df3["Name"]=="PreReform","Value"].iloc[0]
+                except:
+                    # print('Warning: "PreReform" not defined, PreReform=0.2')  
+                    PreReform=0.2
+            # "preprocessor" input #8
+            try:
+                cellsize=df1.loc[df1["Name"]=="cellsize","Value"].iloc[0]
+                df1.loc[df1["Name"]=="cellsize","Called"]=True
+            except:
+                try:
+                     cellsize=df3.loc[df3["Name"]=="cellsize","Value"].iloc[0]
+                except:
+                    # print('Warning: "cellsize" not defined, cellsize=550.0')  
+                    cellsize=550.0 #cm2
+            
+            if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                # "preprocessor" input #9
+                try:
+                    VGR=df1.loc[df1["Name"]=="VGRRate","Value"].iloc[0]
+                    df1.loc[df1["Name"]=="VGRRate","Called"]=True
+                except:
+                    try:
+                         VGR=df3.loc[df3["Name"]=="VGRRate","Value"].iloc[0]
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')    
+                # "preprocessor" input #10
+                try:
+                    VGRTemperature=df1.loc[df1["Name"]=="VGRTemperature","Value"].iloc[0]
+                    df1.loc[df1["Name"]=="VGRTemperature","Called"]=True
+                except:
+                    try:
+                         VGRTemperature=df3.loc[df3["Name"]=="VGRTemperature","Value"].iloc[0]
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')  
+                # "preprocessor" input #11
+                try:
+                    H2OCap=1-df1.loc[df1["Name"]=="VGRH2OPassRate","Value"].iloc[0]
+                    df1.loc[df1["Name"]=="VGRH2OPassRate","Called"]=True
+                except:
+                    try:
+                         H2OCap=1-df3.loc[df3["Name"]=="VGRH2OPassRate","Value"].iloc[0]
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')  
+                # "preprocessor" input #12
+                try:
+                    CO2Cap=df1.loc[df1["Name"]=="VGRCO2CaptureRate","Value"].iloc[0]
+                    df1.loc[df1["Name"]=="VGRCO2CaptureRate","Called"]=True
+                except:
+                    try:
+                         CO2Cap=df3.loc[df3["Name"]=="VGRCO2CaptureRate","Value"].iloc[0]
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')  
+                # "preprocessor" input #13
+                try:
+                    H2Cap=1-df1.loc[df1["Name"]=="VGRH2PassRate","Value"].iloc[0]
+                    df1.loc[df1["Name"]=="VGRH2PassRate","Called"]=True
+                except:
+                    try:
+                         H2Cap=1-df3.loc[df3["Name"]=="VGRH2PassRate","Value"].iloc[0]
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')  
+                # "preprocessor" input #14
+                try:
+                    WGS=df1.loc[df1["Name"]=="VGRCOConvertRate","Value"].iloc[0]
+                    df1.loc[df1["Name"]=="VGRCOConvertRate","Called"]=True
+                except:
+                    try:
+                         WGS=df3.loc[df3["Name"]=="VGRCOConvertRate","Value"].iloc[0]
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined') 
+            
+            W = sys_preprocessor()
+            if preprocessor_name == 'NGFC_ccs': # NGFC CCS
+                FuelIn,AirIn,AirFresh,Frec,succ=W.NGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+            elif preprocessor_name == 'NGFC_nocc': # NGFC NO CCS
+                FuelIn,AirIn,AirFresh,Frec,succ=W.NGFC_nocc(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+            elif preprocessor_name == 'NGFC_ccs_vgr': # NGFC CCS VGR
+                FuelIn,AirIn,AirFresh,Frec,succ=W.NGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize)
+            elif preprocessor_name == 'IGFC_ccs': # IGFC: conventional, Enhanced, Catalytic
+                FuelIn,AirIn,AirFresh,Frec,succ=W.IGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize,igfc)
+            elif preprocessor_name == 'IGFC_ccs_vgr': # IGFC VGR: conventional, Enhanced, Catalytic
+                FuelIn,AirIn,AirFresh,Frec,succ=W.IGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize,igfc)
+            else:
+                sys.exit('Code terminated: the selected "preprocessor" cannot be found')
+            
+            if succ == 1:
+                ## write to sofc4rom.dat
+                inp_base=open(inputbasefilename,"r")
+                lines_inp=inp_base.readlines()
+                for j in range(len(lines_inp)):
+                    str00=lines_inp[j].split('=')
+                    str00[0]=str00[0].rstrip()
+                    str00[0]=str00[0].lstrip()
+                    
+                    # update according to "preprocessor" outputs
+                    if str00[0]=="FuelNGH2O": lines_inp[j]="FuelNGH2O = "+str(FuelIn[0])+"\n"
+                    if str00[0]=="FuelNGAr": lines_inp[j]="FuelNGAr = "+str(FuelIn[1])+"\n"
+                    if str00[0]=="FuelNGCO2": lines_inp[j]="FuelNGCO2 = "+str(FuelIn[2])+"\n"
+                    if str00[0]=="FuelNGO2": lines_inp[j]="FuelNGO2 = "+str(FuelIn[3])+"\n"
+                    if str00[0]=="FuelNGN2": lines_inp[j]="FuelNGN2 = "+str(FuelIn[4])+"\n"
+                    if str00[0]=="FuelNGCH4": lines_inp[j]="FuelNGCH4 = "+str(FuelIn[5])+"\n"
+                    if str00[0]=="FuelNGCO": lines_inp[j]="FuelNGCO = "+str(FuelIn[6])+"\n"
+                    if str00[0]=="FuelNGH2": lines_inp[j]="FuelNGH2 = "+str(FuelIn[7])+"\n"
+                    if str00[0]=="FuelNGC2H6": lines_inp[j]="FuelNGC2H6 = "+str(FuelIn[8])+"\n"
+                    if str00[0]=="FuelNGC3H8": lines_inp[j]="FuelNGC3H8 = "+str(FuelIn[9])+"\n"
+                    if str00[0]=="FuelNGC4H10": lines_inp[j]="FuelNGC4H10 = "+str(FuelIn[10])+"\n"
+                    if str00[0]=="StackOxidantFlowRateO2": lines_inp[j]="StackOxidantFlowRateO2 = "+str(AirIn[0])+"\n"
+                    if str00[0]=="StackOxidantFlowRateN2": lines_inp[j]="StackOxidantFlowRateN2 = "+str(AirIn[1])+"\n"
+                    if str00[0]=="StackOxidantFlowRateH2O": lines_inp[j]="StackOxidantFlowRateH2O = "+str(AirIn[2])+"\n"
+                    if str00[0]=="StackOxidantFlowRateCO2": lines_inp[j]="StackOxidantFlowRateCO2 = "+str(AirIn[3])+"\n"
+                    if str00[0]=="StackOxidantFlowRateAr": lines_inp[j]="StackOxidantFlowRateAr = "+str(AirIn[4])+"\n"
+                    if str00[0]=="FuelNGRecirculationRate": lines_inp[j]="FuelNGRecirculationRate = "+str(Frec)+"\n"
+                    if str00[0]=="FuelNGFlowRate": lines_inp[j]="FuelNGFlowRate = "+str(sum(FuelIn))+"\n"
+                    
+                    # delete four lines when "preprocessor" enabled
+                    if str00[0]=="FuelRecycle": lines_inp[j]=""
+                    if str00[0]=="FuelRecyclePercent": lines_inp[j]=""
+                    if str00[0]=="OxidantRecycle": lines_inp[j]=""
+                    if str00[0]=="OxidantRecyclePercent": lines_inp[j]=""
+                            
+                    # update according to LH sampling
+                    for k in range(len(df1)):
+                        if str00[0]==df1['Name'].iloc[k]: 
+                            lines_inp[j]=str00[0]+" = "+str(df1['Value'].iloc[k])+"\n"
+                            df1.loc[df1["Name"]==str00[0],'Called']=True
+                
+                if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                    add_inp_lines=["0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0","0", "0"]
+                    add_inp_lines[0]="Stack_Fuel_Utilization = "+str(FU)+"\n"
+                    add_inp_lines[1]="Stack_Oxidant_Utilization = "+str(AU)+"\n"
+                    add_inp_lines[2]="Oxidant_Recirculation = "+str(Arec)+"\n"
+                    add_inp_lines[3]="Internal_Reforming = "+str(IR)+"\n"
+                    add_inp_lines[4]="OxygenToCarbon_Ratio = "+str(OCR)+"\n"
+                    add_inp_lines[5]="Average_CurrentDensity = "+str(J*10.0)+"\n"
+                    add_inp_lines[6]="PreReform = "+str(PreReform)+"\n"
+                    
+                    add_inp_lines[7]="VGRRate = "+str(VGR)+"\n"
+                    add_inp_lines[8]="VGRTemperature  = "+str(VGRTemperature )+"\n"
+                    add_inp_lines[9]="VGRH2OPassRate = "+str(1-H2OCap)+"\n"
+                    add_inp_lines[10]="VGRH2PassRate = "+str(1-H2Cap)+"\n"
+                    add_inp_lines[11]="VGRCO2CaptureRate = "+str(CO2Cap)+"\n"
+                    add_inp_lines[12]="VGRCOConvertRate = "+str(WGS)+"\n"
+                    
+                    add_inp_lines[13]="FreshOxidantFlowRateO2 = "+str(AirFresh[0])+"\n"
+                    add_inp_lines[14]="FreshOxidantFlowRateN2 = "+str(AirFresh[1])+"\n"
+                    add_inp_lines[15]="FreshOxidantFlowRateH2O = "+str(AirFresh[2])+"\n"
+                    add_inp_lines[16]="FreshOxidantFlowRateCO2 = "+str(AirFresh[3])+"\n"
+                    add_inp_lines[17]="FreshOxidantFlowRateAr = "+str(AirFresh[4])+"\n"
+                    
+                else:
+                    add_inp_lines=["0","0","0","0","0","0","0","0","0","0","0","0"]
+                    add_inp_lines[0]="Stack_Fuel_Utilization = "+str(FU)+"\n"
+                    add_inp_lines[1]="Stack_Oxidant_Utilization = "+str(AU)+"\n"
+                    add_inp_lines[2]="Oxidant_Recirculation = "+str(Arec)+"\n"
+                    add_inp_lines[3]="Internal_Reforming = "+str(IR)+"\n"
+                    add_inp_lines[4]="OxygenToCarbon_Ratio = "+str(OCR)+"\n"
+                    add_inp_lines[5]="Average_CurrentDensity = "+str(J*10.0)+"\n"
+                    add_inp_lines[6]="PreReform = "+str(PreReform)+"\n"
+
+                    add_inp_lines[7]="FreshOxidantFlowRateO2 = "+str(AirFresh[0])+"\n"
+                    add_inp_lines[8]="FreshOxidantFlowRateN2 = "+str(AirFresh[1])+"\n"
+                    add_inp_lines[9]="FreshOxidantFlowRateH2O = "+str(AirFresh[2])+"\n"
+                    add_inp_lines[10]="FreshOxidantFlowRateCO2 = "+str(AirFresh[3])+"\n"
+                    add_inp_lines[11]="FreshOxidantFlowRateAr = "+str(AirFresh[4])+"\n"
+
+                extra_inp_lines = []
+                for k in range(len(df1)):
+                    if df1['Called'].iloc[k] == False:
+                        line_tmp=str(df1['Name'].iloc[k])+" = "+str(df1['Value'].iloc[k])+"\n"
+                        extra_inp_lines.append(line_tmp)
+                        df1.loc[df1["Name"]==str(df1['Name'].iloc[k]),'Called']=True
+
+                outputfilename = path_tmp+'/'+'sofc4rom.dat'
+                inp_w=open(outputfilename,"w")
+                inp_w.write("@model="+inputbasefilename+"\n")
+                inp_w.writelines(lines_inp)
+                inp_w.writelines(add_inp_lines)
+                inp_w.writelines(extra_inp_lines)
+                inp_w.close()
+            else:
+                ## create failure resutl SOFC_MP_ROM.dat
+                indpreprocessorfailed.append(i)
+
+                lines=["0", "0", "0"]
+                lines[0]="#SOFC 2D Simulation Result for Reduced Order Modeling\n"
+                lines[1]="#FAILED\n"
+                if Frec<0:
+                    lines[2]="Calcualted fuel recirculation "+str(Frec)+" is negative\n"
+                if Frec>0.9:
+                    lines[2]="Calcualted fuel recirculation "+str(Frec)+" is larger than 0.9\n"
+
+                outputfilename = path_tmp+'/'+'SOFC_MP_ROM.dat'
+                inp_w=open(outputfilename,"w")
+                inp_w.writelines(lines)
+                inp_w.close()
+
+        else: # if "preprocessor" not enabled
+            nCells = 1
+            StackVoltage = 0.7082
+            
+            # load 'romSOFCMP2D4ROM.inp'
+            inputfilename = path_tmp+'/'+'romSOFCMP2D4ROM.inp'
+            text_file=open(inputfilename,"r")
+            lines = text_file.readlines()
+            df0 = pd.DataFrame(np.array([['1a', '1b', '1c']]),columns=['Name', 'Value', 'Called'])
+            df1 = pd.DataFrame(columns=['Name', 'Value', 'Called'])
+            for j in range(len(lines)):
+                if j>0:
+                    str01 = lines[j].split('=')
+                    str01[0]=str01[0].rstrip()
+                    str01[0]=str01[0].lstrip()
+                    df0['Name']=str01[0]
+                    df0['Value']=float(str01[1])
+                    df0['Called']=False
+                    df1=pd.concat([df1,df0],sort=False,ignore_index=True)
+                        
+            # load inputbasefile
+            inp_base=open(inputbasefilename,"r")
+            lines_inp=inp_base.readlines()
+            for j in range(len(lines_inp)):
+                str00=lines_inp[j].split('=')
+                str00[0]=str00[0].rstrip()
+                str00[0]=str00[0].lstrip()
+                if str00[0] == 'nCells':
+                    nCells = int(str00[1])
+            for j in range(len(lines_inp)):
+                str00=lines_inp[j].split('=')
+                str00[0]=str00[0].rstrip()
+                str00[0]=str00[0].lstrip()
+                for k in range(len(df1)):
+                    if str00[0]==df1['Name'].iloc[k]: 
+                        lines_inp[j]=str00[0]+" = "+str(df1['Value'].iloc[k])+"\n"
+                        df1.loc[df1["Name"]==str00[0],'Called']=True
+                if str00[0]=='StackVoltage':
+                    for k in range(len(df1)):
+                        if df1['Name'].iloc[k]=='Average_CellVoltage':
+                            StackVoltage=nCells*df1['Value'].iloc[k]
+                            lines_inp[j]=str00[0]+" = "+str(StackVoltage)+"\n"
+                                
+            extra_inp_lines = []
+            for k in range(len(df1)):
+                if df1['Called'].iloc[k] == False:
+                    line_tmp=str(df1['Name'].iloc[k])+" = "+str(df1['Value'].iloc[k])+"\n"
+                    extra_inp_lines.append(line_tmp)
+                    df1.loc[df1["Name"]==str(df1['Name'].iloc[k]),'Called']=True
+
+            outputfilename = path_tmp+'/'+'sofc4rom.dat'
+            inp_w=open(outputfilename,"w")
+            inp_w.write("@model="+inputbasefilename+"\n")
+            inp_w.writelines(lines_inp)
+            inp_w.writelines(extra_inp_lines)
+            inp_w.close()
+            
+    if preprocessor_enabled == True:
+        print('The following cases failed for preprocessor "'+preprocessor_name+'":')
+        print(*indpreprocessorfailed)
+        print('End of code\n')
+    else:
+        print('End of code\n')
+
 class runSimu_HPC():
     def __init__(self, local_path, HPC_path, numcase, create_HPC_path, 
                  use_scratch, vgr_enabled,  
@@ -4422,6 +4867,264 @@ class runSimu_HPC():
         else:
             sshClient.close()
     
+    def SubSimuonHPC_SOFC(self, NumCores_eachnode = '24', allocation = 'face', 
+                     partition = 'short', time_limit = '0:30:00'):
+        '''
+        The function submits simulations on the HPC
+        '''
+        print('############################################################\
+              \nSubmit simulations on the HPC\
+              \n############################################################')
+        
+        ## Step 1: determine which cases are not finished: numruncase and indruncase
+        # icase_start, icase_end
+        numcores = NumCores_eachnode
+        numruncase = self.numcase # numcase = icase_end-icase_start+1
+        indruncase = []
+        indfinishedcase = []
+        for i in range(self.numcase): # may consider icase_start, icase_end
+            path_tmp = self.local_path+'/Cases/Case'+str(i).zfill(5)+'/SOFC_MP_ROM.dat'
+            if os.path.exists(path_tmp):
+                #print('Case'+str(i).zfill(5)+' already has the result "SOFC_MP_ROM.dat" on the local machine')
+                numruncase = numruncase-1
+                indfinishedcase.append(i)
+            else:
+                indruncase.append(i)
+        
+        print('The following cases already have "SOFC_MP_ROM.dat" on the local machine:')
+        print(*indfinishedcase)
+                
+        # update global variables
+        self.numruncase = numruncase
+        self.indruncase = indruncase
+        
+        ## Step 2: generate ".batch" files, assign jobs to each node
+        numnode = int(math.ceil(float(numruncase)/float(numcores)))
+        numLastnode = numruncase%numcores
+        if numLastnode == 0: numLastnode = numcores
+            
+        list_sbatch = []
+        for i in range(numnode):
+            if i<numnode-1 or numnode == 1:
+                ttjobs = numcores
+                if numcores>numruncase: ttjobs = numLastnode
+            else:
+                ttjobs = numLastnode
+            
+            job_start = i*numcores # may consider icase_start, icase_end
+            job_end = i*numcores+ttjobs-1 # may consider icase_start, icase_end
+            
+            # generate individual job (.batch file) for each node
+            lines=[]
+            lines.append("#!/bin/csh -f\n")
+            lines.append("#SBATCH --job-name=" + str(job_start) + "-" + str(job_end) + "\n")
+            lines.append("#SBATCH --time=" + time_limit + "\n")
+            lines.append("#SBATCH -N 1\n")
+            lines.append("#SBATCH -n " + str(ttjobs) + "\n")
+            lines.append("#SBATCH --output=batchsofc" + str(job_start) + "-" + str(job_end) + ".out\n")
+            lines.append("#SBATCH -A " + allocation + "\n")
+            lines.append("#SBATCH -p " + partition + "\n")
+            lines.append("source /etc/profile.d/modules.csh\n")
+            lines.append("module purge\n")
+            lines.append("module load gcc/4.4.7\n")
+            
+            for j in range(numruncase):
+                icase = indruncase[j]
+                if self.vgr_enabled == True:
+                    if self.use_scratch == True:
+                        lines.append("(cp -rf " + self.HPC_path + 
+                                     "/Cases/Case" + str(icase).zfill(5) + 
+                                     " /scratch/; cd /scratch/Case" + 
+                                     str(icase).zfill(5) + 
+                                     "; sofc_soec sofc4rom.dat vgr; cp /scratch/Case" + 
+                                     str(icase).zfill(5) + "/* " + 
+                                     self.HPC_path + "/Cases/Case" + 
+                                     str(icase).zfill(5) + "/ ) &\n")
+                    else:
+                        lines.append("(cd " + self.HPC_path + 
+                                     "/Cases/Case" + str(icase).zfill(5) + 
+                                     "; sofc_soec sofc4rom.dat vgr ) &\n")
+                else:
+                    if self.use_scratch == True:
+                        lines.append("(cp -rf " + self.HPC_path + 
+                                     "/Cases/Case" + str(icase).zfill(5) + 
+                                     " /scratch/; cd /scratch/Case" + 
+                                     str(icase).zfill(5) + 
+                                     "; sofc_soec sofc4rom.dat; cp /scratch/Case" + 
+                                     str(icase).zfill(5) + "/* " + 
+                                     self.HPC_path + "/Cases/Case" + 
+                                     str(icase).zfill(5) + "/ ) &\n")
+                    else:
+                        lines.append("(cd " + self.HPC_path + 
+                                     "/Cases/Case" + str(icase).zfill(5) + 
+                                     "; sofc_soec sofc4rom.dat ) &\n")
+            lines.append("wait\n")
+            outputfilename = self.local_path + '/Cases/run' + str(job_start) + "-" + str(job_end) + '.sbatch'
+            inp_w=open(outputfilename,"w")
+            inp_w.writelines(lines)
+            inp_w.close()
+            # one need to convert \r\n to \n for windows system
+            if os.name == 'nt':
+                dos2unix(outputfilename)
+            # update .sbatch filenames
+            list_sbatch.append('run' + str(job_start) + "-" + str(job_end) + '.sbatch')
+            
+        ## Step 3: transfer ".batch" files to HPC, submit jobs
+        sshClient = paramiko.SSHClient()                                   # create SSHClient instance
+        sshClient.set_missing_host_key_policy(paramiko.AutoAddPolicy())    # AutoAddPolicy automatically adding the hostname and new host key
+        sshClient.load_system_host_keys()
+        sshClient.connect(self.hostname, self.port, self.username, self.password)
+        
+        sftpClient = sshClient.open_sftp()
+        for string in list_sbatch:
+            sourcefile = self.local_path + '/Cases/' + string
+            destfile = self.HPC_path + '/Cases/' + string
+            sftpClient.put(sourcefile, destfile)
+        sftpClient.close
+        
+        # Step 4: submit simulations
+        query = query_yes_no('".sbatch" files have been put on the HPC, do you want to submit the simulations?')
+        
+        if query == True:
+            command_sbatch = 'cd ' + self.HPC_path  + '/Cases'
+            for string in list_sbatch:
+                command_sbatch = command_sbatch + '; sbatch ' + string
+            stdin, stdout, stderr = sshClient.exec_command(command_sbatch)
+            for line in stdout:
+                print(line.strip('\n'))
+            sshClient.close()
+        else:
+            sshClient.close()
+    
+    def SubSimuonHPC_SOEC(self, NumCores_eachnode = '24', allocation = 'face', 
+                     partition = 'short', time_limit = '0:30:00'):
+        '''
+        The function submits simulations on the HPC
+        '''
+        print('############################################################\
+              \nSubmit simulations on the HPC\
+              \n############################################################')
+        
+        ## Step 1: determine which cases are not finished: numruncase and indruncase
+        # icase_start, icase_end
+        numcores = NumCores_eachnode
+        numruncase = self.numcase # numcase = icase_end-icase_start+1
+        indruncase = []
+        indfinishedcase = []
+        for i in range(self.numcase): # may consider icase_start, icase_end
+            path_tmp = self.local_path+'/Cases/Case'+str(i).zfill(5)+'/SOFC_MP_ROM.dat'
+            if os.path.exists(path_tmp):
+                #print('Case'+str(i).zfill(5)+' already has the result "SOFC_MP_ROM.dat" on the local machine')
+                numruncase = numruncase-1
+                indfinishedcase.append(i)
+            else:
+                indruncase.append(i)
+        
+        print('The following cases already have "SOFC_MP_ROM.dat" on the local machine:')
+        print(*indfinishedcase)
+                
+        # update global variables
+        self.numruncase = numruncase
+        self.indruncase = indruncase
+        
+        ## Step 2: generate ".batch" files, assign jobs to each node
+        numnode = int(math.ceil(float(numruncase)/float(numcores)))
+        numLastnode = numruncase%numcores
+        if numLastnode == 0: numLastnode = numcores
+            
+        list_sbatch = []
+        for i in range(numnode):
+            if i<numnode-1 or numnode == 1:
+                ttjobs = numcores
+                if numcores>numruncase: ttjobs = numLastnode
+            else:
+                ttjobs = numLastnode
+            
+            job_start = i*numcores # may consider icase_start, icase_end
+            job_end = i*numcores+ttjobs-1 # may consider icase_start, icase_end
+            
+            # generate individual job (.batch file) for each node
+            lines=[]
+            lines.append("#!/bin/csh -f\n")
+            lines.append("#SBATCH --job-name=" + str(job_start) + "-" + str(job_end) + "\n")
+            lines.append("#SBATCH --time=" + time_limit + "\n")
+            lines.append("#SBATCH -N 1\n")
+            lines.append("#SBATCH -n " + str(ttjobs) + "\n")
+            lines.append("#SBATCH --output=batchsofc" + str(job_start) + "-" + str(job_end) + ".out\n")
+            lines.append("#SBATCH -A " + allocation + "\n")
+            lines.append("#SBATCH -p " + partition + "\n")
+            lines.append("source /etc/profile.d/modules.csh\n")
+            lines.append("module purge\n")
+            lines.append("module load gcc/4.4.7\n")
+            
+            for j in range(numruncase):
+                icase = indruncase[j]
+                if self.vgr_enabled == True:
+                    if self.use_scratch == True:
+                        lines.append("(cp -rf " + self.HPC_path + 
+                                     "/Cases/Case" + str(icase).zfill(5) + 
+                                     " /scratch/; cd /scratch/Case" + 
+                                     str(icase).zfill(5) + 
+                                     "; sofc_soec sofc4rom.dat soec; cp /scratch/Case" + 
+                                     str(icase).zfill(5) + "/* " + 
+                                     self.HPC_path + "/Cases/Case" + 
+                                     str(icase).zfill(5) + "/ ) &\n")
+                    else:
+                        lines.append("(cd " + self.HPC_path + 
+                                     "/Cases/Case" + str(icase).zfill(5) + 
+                                     "; sofc_soec sofc4rom.dat soec ) &\n")
+                else:
+                    if self.use_scratch == True:
+                        lines.append("(cp -rf " + self.HPC_path + 
+                                     "/Cases/Case" + str(icase).zfill(5) + 
+                                     " /scratch/; cd /scratch/Case" + 
+                                     str(icase).zfill(5) + 
+                                     "; sofc_soec sofc4rom.dat soec; cp /scratch/Case" + 
+                                     str(icase).zfill(5) + "/* " + 
+                                     self.HPC_path + "/Cases/Case" + 
+                                     str(icase).zfill(5) + "/ ) &\n")
+                    else:
+                        lines.append("(cd " + self.HPC_path + 
+                                     "/Cases/Case" + str(icase).zfill(5) + 
+                                     "; sofc_soec sofc4rom.dat soec ) &\n")
+            lines.append("wait\n")
+            outputfilename = self.local_path + '/Cases/run' + str(job_start) + "-" + str(job_end) + '.sbatch'
+            inp_w=open(outputfilename,"w")
+            inp_w.writelines(lines)
+            inp_w.close()
+            # one need to convert \r\n to \n for windows system
+            if os.name == 'nt':
+                dos2unix(outputfilename)
+            # update .sbatch filenames
+            list_sbatch.append('run' + str(job_start) + "-" + str(job_end) + '.sbatch')
+            
+        ## Step 3: transfer ".batch" files to HPC, submit jobs
+        sshClient = paramiko.SSHClient()                                   # create SSHClient instance
+        sshClient.set_missing_host_key_policy(paramiko.AutoAddPolicy())    # AutoAddPolicy automatically adding the hostname and new host key
+        sshClient.load_system_host_keys()
+        sshClient.connect(self.hostname, self.port, self.username, self.password)
+        
+        sftpClient = sshClient.open_sftp()
+        for string in list_sbatch:
+            sourcefile = self.local_path + '/Cases/' + string
+            destfile = self.HPC_path + '/Cases/' + string
+            sftpClient.put(sourcefile, destfile)
+        sftpClient.close
+        
+        # Step 4: submit simulations
+        query = query_yes_no('".sbatch" files have been put on the HPC, do you want to submit the simulations?')
+        
+        if query == True:
+            command_sbatch = 'cd ' + self.HPC_path  + '/Cases'
+            for string in list_sbatch:
+                command_sbatch = command_sbatch + '; sbatch ' + string
+            stdin, stdout, stderr = sshClient.exec_command(command_sbatch)
+            for line in stdout:
+                print(line.strip('\n'))
+            sshClient.close()
+        else:
+            sshClient.close()
+    
     def CheckSimuStatus(self):
         '''
         The function checks the simulation status on the HPC
@@ -4554,7 +5257,7 @@ class runSimu_SubSys():
             if self.vgr_enabled == False:
                 command = 'pgrep -c sofc'
             else:
-                command = 'pgrep -c sofcvgr'
+                command = 'pgrep -c sofc'
             stdin, stdout, stderr = sshClient.exec_command(command)
             RunningCount = int(stdout.read())
             
@@ -4611,7 +5314,189 @@ class runSimu_SubSys():
                 if self.vgr_enabled == False:
                     command = 'pkill sofc'
                 else:
-                    command = 'pkill sofcvgr'
+                    command = 'pkill sofc'
+                stdin, stdout, stderr = sshClient.exec_command(command)
+                break
+        
+        # End sshClient
+        sftpClient.close
+        sshClient.close()
+    
+    def SubSimuonSS_SOFC(self, MaxSimulIns = 1, time_limit = '1:00:00'):
+        '''
+        The function submits simulations on the sub-system
+        '''
+        print('############################################################\
+              \nSubmit simulations on the sub-system\
+              \n############################################################')
+        
+        # Start sshClient
+        sshClient = paramiko.SSHClient()                                   # create SSHClient instance
+        sshClient.set_missing_host_key_policy(paramiko.AutoAddPolicy())    # AutoAddPolicy automatically adding the hostname and new host key
+        sshClient.load_system_host_keys()
+        sshClient.connect(self.hostname, self.port, self.username, self.password)
+        sftpClient = sshClient.open_sftp()
+
+        RunningCount = 0
+        RunningInd = []
+        FinishedCount = 0
+        FinishedInd = []
+        FinishedCount_update = 0
+        time_start = time.time()
+        while(True):
+            # Check how many processes in the background
+            if self.vgr_enabled == False:
+                command = 'pgrep -c sofc_soec'
+            else:
+                command = 'pgrep -c sofc_soec'
+            stdin, stdout, stderr = sshClient.exec_command(command)
+            RunningCount = int(stdout.read())
+            
+            for i in range(self.numcase):
+                # Check if case i is done or not
+                if i in FinishedInd:
+                    CaseFinished = True
+                else:
+                    destfile = self.work_path+'/Cases/Case'+str(i).zfill(5)+'/SOFC_MP_ROM.dat'
+                    try:
+                        sftpClient.stat(destfile)
+                        FinishedCount += 1
+                        FinishedInd.append(i)
+                        if i in RunningInd:
+                            RunningInd.remove(i)
+                        CaseFinished = True
+                    except IOError:
+                        CaseFinished = False
+                
+                # Run case i if 1: case not done; 2: space in the queue; 3: case not running
+                if CaseFinished == False and RunningCount < MaxSimulIns and (i not in RunningInd):
+                    if self.vgr_enabled == False:
+                        command = '(cd '+self.work_path+'/Cases/Case'+ str(i).zfill(5)                        +'; '+self.source_path+'/sofc_soec sofc4rom.dat) &'
+                        sshClient.exec_command(command)
+                        # Add case i to the running case list
+                        RunningInd.append(i)
+                        RunningCount += 1
+                    else:
+                        command = '(cd '+self.work_path+'/Cases/Case'+ str(i).zfill(5)                        +'; '+self.source_path+'/sofc_soec sofc4rom.dat vgr) &'
+                        sshClient.exec_command(command)
+                        # Add case i to the running case list
+                        RunningInd.append(i)
+                        RunningCount += 1
+                
+                # Break out for-loop if not space in the queue
+                if RunningCount >= MaxSimulIns:
+                    break
+            
+            # Update simulation status
+            if (FinishedCount-FinishedCount_update) >= 5:
+                FinishedCount_update = FinishedCount
+                print("Simulation status:\nRunning: "+str(RunningCount)+"\tFinished: "+str(FinishedCount))
+            
+            # Break out while-loop if no running case or exceed time
+            hour, min, sec = [float(i) for i in time_limit.split(':')]
+            time_limit_sec = hour*3600+min*60+sec
+            time_elapsed = time.time()-time_start
+            if RunningCount == 0:
+                print("All the simulation Done!")
+                break
+            if time_elapsed > time_limit_sec:
+                print("Exceed time limit, simulation terminated!")
+                # Kill all the background processes and break while loop
+                if self.vgr_enabled == False:
+                    command = 'pkill sofc_soec'
+                else:
+                    command = 'pkill sofc_soec'
+                stdin, stdout, stderr = sshClient.exec_command(command)
+                break
+        
+        # End sshClient
+        sftpClient.close
+        sshClient.close()
+    
+    def SubSimuonSS_SOEC(self, MaxSimulIns = 1, time_limit = '1:00:00'):
+        '''
+        The function submits simulations on the sub-system
+        '''
+        print('############################################################\
+              \nSubmit simulations on the sub-system\
+              \n############################################################')
+        
+        # Start sshClient
+        sshClient = paramiko.SSHClient()                                   # create SSHClient instance
+        sshClient.set_missing_host_key_policy(paramiko.AutoAddPolicy())    # AutoAddPolicy automatically adding the hostname and new host key
+        sshClient.load_system_host_keys()
+        sshClient.connect(self.hostname, self.port, self.username, self.password)
+        sftpClient = sshClient.open_sftp()
+
+        RunningCount = 0
+        RunningInd = []
+        FinishedCount = 0
+        FinishedInd = []
+        FinishedCount_update = 0
+        time_start = time.time()
+        while(True):
+            # Check how many processes in the background
+            if self.vgr_enabled == False:
+                command = 'pgrep -c sofc_soec'
+            else:
+                command = 'pgrep -c sofc_soec'
+            stdin, stdout, stderr = sshClient.exec_command(command)
+            RunningCount = int(stdout.read())
+            
+            for i in range(self.numcase):
+                # Check if case i is done or not
+                if i in FinishedInd:
+                    CaseFinished = True
+                else:
+                    destfile = self.work_path+'/Cases/Case'+str(i).zfill(5)+'/SOFC_MP_ROM.dat'
+                    try:
+                        sftpClient.stat(destfile)
+                        FinishedCount += 1
+                        FinishedInd.append(i)
+                        if i in RunningInd:
+                            RunningInd.remove(i)
+                        CaseFinished = True
+                    except IOError:
+                        CaseFinished = False
+                
+                # Run case i if 1: case not done; 2: space in the queue; 3: case not running
+                if CaseFinished == False and RunningCount < MaxSimulIns and (i not in RunningInd):
+                    if self.vgr_enabled == False:
+                        command = '(cd '+self.work_path+'/Cases/Case'+ str(i).zfill(5)                        +'; '+self.source_path+'/sofc_soec sofc4rom.dat soec) &'
+                        sshClient.exec_command(command)
+                        # Add case i to the running case list
+                        RunningInd.append(i)
+                        RunningCount += 1
+                    else:
+                        command = '(cd '+self.work_path+'/Cases/Case'+ str(i).zfill(5)                        +'; '+self.source_path+'/sofc_soec sofc4rom.dat soec) &'
+                        sshClient.exec_command(command)
+                        # Add case i to the running case list
+                        RunningInd.append(i)
+                        RunningCount += 1
+                
+                # Break out for-loop if not space in the queue
+                if RunningCount >= MaxSimulIns:
+                    break
+            
+            # Update simulation status
+            if (FinishedCount-FinishedCount_update) >= 5:
+                FinishedCount_update = FinishedCount
+                print("Simulation status:\nRunning: "+str(RunningCount)+"\tFinished: "+str(FinishedCount))
+            
+            # Break out while-loop if no running case or exceed time
+            hour, min, sec = [float(i) for i in time_limit.split(':')]
+            time_limit_sec = hour*3600+min*60+sec
+            time_elapsed = time.time()-time_start
+            if RunningCount == 0:
+                print("All the simulation Done!")
+                break
+            if time_elapsed > time_limit_sec:
+                print("Exceed time limit, simulation terminated!")
+                # Kill all the background processes and break while loop
+                if self.vgr_enabled == False:
+                    command = 'pkill sofc_soec'
+                else:
+                    command = 'pkill sofc_soec'
                 stdin, stdout, stderr = sshClient.exec_command(command)
                 break
         
@@ -4706,8 +5591,9 @@ class kriging():
         ## Step 1: load simulation outputs to Y4kriging
         numcase4kriging = 0 # number of cases for kriging
         indcase4kriging = [] # index of cases for kriging, start from 1
-        S4kriging = None # simulation inputs for kriging
-        Y4kriging = None # simulation outputs for kriging
+        S4kriging = pd.DataFrame({'A' : []}) # simulation inputs for kriging
+        Y4kriging = pd.DataFrame({'A' : []}) # simulation outputs for kriging
+        
         for icase in indcase:
             # load SOFC_MP_ROM.dat to df1
             strcase = 'Case'+str(icase-1)+'Value'
@@ -4718,29 +5604,32 @@ class kriging():
                 
                 if len(lines) == 0: 
                     continue #print('Empty case')
-                if lines[1].strip() == '#FAILED': 
+                
+                Failornot = False
+                for j in range(len(lines)):
+                    if lines[j].strip() == '#FAILED': 
+                        Failornot = True
+                if Failornot == True:
                     continue #print('"preprocessor" failed case')
                 
                 df0 = pd.DataFrame(np.array([['1a', '1b']]),columns=['Name', strcase])
                 df1 = pd.DataFrame(np.array([['1a', '1b']]),columns=['Name', strcase])
+                
                 for j in range(len(lines)):
-                    if j>1: # skip first two lines
-                        str01 = lines[j].split('=')
-                        str01[0]=str01[0].rstrip()
-                        str01[0]=str01[0].lstrip()
-                        
-                        if len(str01) == 1: continue
-                        
-                        # convert variables in SOFC_MP_ROM.dat to xxx_xxx format
-                        str_tmp = str01[0].strip().split()
-                        str_tmp = '_'.join(str_tmp)
-                        df0['Name']=str_tmp
-                        df0[strcase]=float(str01[1])
-                        if j==2:
-                            df1["Name"]=df0["Name"]
-                            df1[strcase]=df0[strcase]
-                        else:
-                            df1=pd.concat([df1,df0],sort=False, ignore_index=True)
+                    str01 = lines[j].split('=')
+                    str01[0]=str01[0].rstrip()
+                    str01[0]=str01[0].lstrip()
+                    if len(str01) == 1: continue
+                    # convert variables in SOFC_MP_ROM.dat to xxx_xxx format
+                    str_tmp = str01[0].strip().split()
+                    str_tmp = '_'.join(str_tmp)
+                    df0['Name']=str_tmp
+                    df0[strcase]=float(str01[1])
+                    if str_tmp == 'SimulationStatus':
+                        df1["Name"]=df0["Name"]
+                        df1[strcase]=df0[strcase]
+                    else:
+                        df1=pd.concat([df1,df0],sort=False, ignore_index=True)
                 
                 # exclude failed or non-converged cases
                 if int(df1.loc[0, [strcase]]) >= exclude_case:
@@ -4750,6 +5639,10 @@ class kriging():
                         Y4kriging = df1
                     else:
                         Y4kriging = pd.concat([Y4kriging, df1[strcase]], sort=False, axis=1)
+
+        if len(Y4kriging) == 0:
+            print('No cases summarized for the exclusion condition')
+            return
 
         ## Step 2: load simulation inputs to S4kriging
         inputfilename = source_path+'/LHS.dat'
@@ -5001,7 +5894,9 @@ class kriging():
             "VGRH2OPassRate",
             "VGRH2PassRate",
             "VGRCO2CaptureRate",
-            "VGRCOConvertRate"
+            "VGRCOConvertRate",
+            "FuelFlowRate",
+            "OxidantFlowRate"
         ]
 
         units_input = [
@@ -5013,12 +5908,12 @@ class kriging():
             "mol/s",
             "C",
             "-",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
             "C",
             "C",
             "%",
@@ -5030,11 +5925,11 @@ class kriging():
             "-",
             "%",
             "-",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
             "C",
             "C",
             "-",
@@ -5063,7 +5958,9 @@ class kriging():
             "-",
             "-",
             "-",
-            "-"
+            "-",
+            "mol/s",
+            "mol/s"
         ]
         
         names_output = [
@@ -5208,7 +6105,7 @@ class kriging():
         print('Step 1: Load the training data S, Y')
         SYname, SYvalue = self.file_read(self.inkrigingFile)
         infoname, infovalue = self.file_read(self.infoFile)
-        [S_row, Y_row, S_col, Y_col] = [len(SYvalue), len(SYvalue),                                         int(infovalue[0,0]), int(infovalue[0,1])]
+        [S_row, Y_row, S_col, Y_col] = [len(SYvalue), len(SYvalue), int(infovalue[0,0]), int(infovalue[0,1])]
         [self.S_row, self.Y_row, self.S_col, self.Y_col] = [S_row, Y_row, S_col, Y_col]
         
         S = copy.deepcopy(SYvalue[:, :S_col])
@@ -5435,6 +6332,26 @@ class kriging():
                     f.write(str(C[i, j]) + ' ')
                 f.write(str(C[i, col-1]) + '\n')
             f.write('\n')
+            f.write('end\n')
+
+            # add contents of info.dat, inTraining.dat to outTraining.dat
+            f.write('\n')
+            f.write('input_output_col\n')
+            f.write(str(len(Sname))+'\t'+str(len(Yname))+'\n')
+
+            f.write('\n')
+            for tmp_name in Sname:
+                f.write(tmp_name + '\t')
+            for tmp_name in Yname:
+                f.write(tmp_name + '\t')
+            f.write('\n')
+            for i in range(S_row):
+                for j in range(S_col):
+                    f.write('{:11.4E}\t'.format(S[i, j]))
+                for j in range(Y_col):
+                    f.write('{:11.4E}\t'.format(Y[i, j]))
+                f.write('\n')
+
         print('End of code\n')
         
     def prediction(self):
@@ -5809,6 +6726,16 @@ class kriging():
                 SYvalue_cov = SYvalue
             
             if filter_enabled == True:
+                # remove unique-value columns
+                tmp_copy = copy.deepcopy(indY)
+                for j in indY:
+                    tmp_data = SYvalue_cov[:, S_col+j-1]
+                    if len(np.unique(tmp_data))<=5:
+                        tmp_copy.remove(j)
+                        print('Column "'+SYname[S_col+j-1]+'" is removed')
+                indY = copy.deepcopy(tmp_copy)
+
+                # remove outlier rows
                 SY_row_rm = []
                 for j in indY:
                     tmp_data = SYvalue_cov[:, S_col+j-1]
@@ -5947,9 +6874,12 @@ class kriging():
         names_input, units_input, names_output, units_output = self.variable_options()
         Yunit = []
         for i in range(len(Yname)):
-            tempindex = names_output.index(Yname[i])
-            tempunit = units_output[tempindex]
-            Yunit.append(tempunit)
+            try:
+                tempindex = names_output.index(Yname[i])
+                tempunit = units_output[tempindex]
+                Yunit.append(tempunit)
+            except:
+                Yunit.append('Unknown')   
             
         # compute confidence interval
         interval_all = np.zeros((len(Yname),),dtype=np.float64)
@@ -5998,9 +6928,12 @@ class kriging():
         names_input, units_input, names_output, units_output = self.variable_options()
         Yunit = []
         for i in range(len(Yname)):
-            tempindex = names_output.index(Yname[i])
-            tempunit = units_output[tempindex]
-            Yunit.append(tempunit)
+            try:
+                tempindex = names_output.index(Yname[i])
+                tempunit = units_output[tempindex]
+                Yunit.append(tempunit)
+            except:
+                Yunit.append('Unknown')
         
         # compute confidence percentage
         percentage_all = np.zeros((len(Yname),),dtype=np.float64)
@@ -7470,6 +8403,17 @@ class DNN():
     #%% DNN classification       one layer, train DNN classifier, and save DNN
     def DNNCls(self,maxiteration,trainX_nrm,trainY_nrm,input_num_units,DNNcls_save_file):
 
+        # covert output scalar to vector https://stackoverflow.com/questions/43543594/label-scalar-into-one-hot-in-tensorr-flow-code
+        def dense_to_one_hot(labels_dense, num_classes=2):
+            """Convert class labels from scalars to one-hot vectors"""
+            num_labels = labels_dense.shape[0]
+            #index_offset = np.arange(num_labels) * num_classes
+            labels_one_hot = np.zeros((num_labels, num_classes))
+            for ii in range(num_labels):
+                labels_one_hot[ii,int(labels_dense[ii])]=1
+            #labels_one_hot.flat[index_offset + labels_dense.ravel()] = 1
+            return labels_one_hot
+
         hidden_num_units = 500
         output_num_units = 2
         seed=88
@@ -7478,6 +8422,9 @@ class DNN():
 
         X_train, val_x = trainX_nrm[:split_size],trainX_nrm[split_size:]
         y_train, val_y = trainY_nrm[:split_size], trainY_nrm[split_size:]
+        y_train_one_hot = dense_to_one_hot(y_train)
+        val_y_one_hot = dense_to_one_hot(val_y)
+
         print("DNN classification training start ...")
         print("training data set size  ", X_train.shape[0]," * ",X_train.shape[1])
         print("validation data set size", val_x.shape[0]," * ",val_x.shape[1])   
@@ -7530,17 +8477,9 @@ class DNN():
         #write this after all the summary
         #merged = tf.summary.merge_all()
         #writer = tf.summary.FileWriter(cwd)
-        # covert output scalar to vector https://stackoverflow.com/questions/43543594/label-scalar-into-one-hot-in-tensorr-flow-code
-        def dense_to_one_hot(labels_dense, num_classes=2):
-            """Convert class labels from scalars to one-hot vectors"""
-            num_labels = labels_dense.shape[0]
-            #index_offset = np.arange(num_labels) * num_classes
-            labels_one_hot = np.zeros((num_labels, num_classes))
-            for ii in range(num_labels):
-                labels_one_hot[ii,int(labels_dense[ii])]=1
-            #labels_one_hot.flat[index_offset + labels_dense.ravel()] = 1
+        
 
-            return labels_one_hot
+        # y_train preprocessing
 
         prev_cost=0
         saver = tf.train.Saver()
@@ -7552,8 +8491,8 @@ class DNN():
                 for i in range(total_batch):
 
                     batch_x = X_train[i*batch_size:(i+1)*batch_size,]
-                    batch_y = y_train[i*batch_size:(i+1)*batch_size,]
-                    batch_y = dense_to_one_hot(batch_y)
+                    batch_y = y_train_one_hot[i*batch_size:(i+1)*batch_size,]
+                    # batch_y = dense_to_one_hot(batch_y)
                     _, c = sess.run([optimizer, cost], feed_dict = {xc: batch_x, yc: batch_y})
                     avg_cost += c / total_batch
 
@@ -7566,7 +8505,7 @@ class DNN():
                 pred_temp = tf.equal(tf.argmax(output_layer, 1), tf.argmax(yc, 1))
                # pred_temp2= tf.argmax(output_layer, 1)
                 accuracy = tf.reduce_mean(tf.cast(pred_temp, "float"))
-                val_acc=accuracy.eval({xc: val_x, yc: dense_to_one_hot(val_y)})
+                val_acc=accuracy.eval({xc: val_x, yc: val_y_one_hot})
                # test_acc=accuracy.eval({xc: testX_nrm, yc: dense_to_one_hot(testY_nrm)})
 
                 #print ("Validation Accuracy:", accuracy.eval({x: val_x, y: dense_to_one_hot(val_y)})) 
@@ -7590,7 +8529,19 @@ class DNN():
 
     #%% DNN classification       one layer, load in a trained DNN, and continue training
     def DNNCls_restore(self,maxiteration,trainX_nrm,trainY_nrm,input_num_units,DNNcls_load_file,DNNcls_save_file):
-     #   input_num_units = 55
+
+        # covert output scalar to vector https://stackoverflow.com/questions/43543594/label-scalar-into-one-hot-in-tensorr-flow-code
+        def dense_to_one_hot(labels_dense, num_classes=2):
+            """Convert class labels from scalars to one-hot vectors"""
+            num_labels = labels_dense.shape[0]
+            #index_offset = np.arange(num_labels) * num_classes
+            labels_one_hot = np.zeros((num_labels, num_classes))
+            for ii in range(num_labels):
+                labels_one_hot[ii,int(labels_dense[ii])]=1
+            #labels_one_hot.flat[index_offset + labels_dense.ravel()] = 1
+
+            return labels_one_hot
+        
         hidden_num_units = 500
         output_num_units = 2
         seed=88
@@ -7599,6 +8550,10 @@ class DNN():
 
         X_train, val_x = trainX_nrm[:split_size],trainX_nrm[split_size:]
         y_train, val_y = trainY_nrm[:split_size], trainY_nrm[split_size:]
+
+        y_train_one_hot = dense_to_one_hot(y_train)
+        val_y_one_hot = dense_to_one_hot(val_y)
+
         print("DNN classification training start ...")
         print("training data set size  ", X_train.shape[0]," * ",X_train.shape[1])
         print("validation data set size", val_x.shape[0]," * ",val_x.shape[1])   
@@ -7638,7 +8593,6 @@ class DNN():
         tf.summary.histogram("biases_output",biases['output'])
         tf.summary.histogram("layer_output", output_layer)
 
-
         #
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=output_layer, labels=yc))
 
@@ -7651,17 +8605,7 @@ class DNN():
         #write this after all the summary
         #merged = tf.summary.merge_all()
         #writer = tf.summary.FileWriter(cwd)
-        # covert output scalar to vector https://stackoverflow.com/questions/43543594/label-scalar-into-one-hot-in-tensorr-flow-code
-        def dense_to_one_hot(labels_dense, num_classes=2):
-            """Convert class labels from scalars to one-hot vectors"""
-            num_labels = labels_dense.shape[0]
-            #index_offset = np.arange(num_labels) * num_classes
-            labels_one_hot = np.zeros((num_labels, num_classes))
-            for ii in range(num_labels):
-                labels_one_hot[ii,int(labels_dense[ii])]=1
-            #labels_one_hot.flat[index_offset + labels_dense.ravel()] = 1
-
-            return labels_one_hot
+        
 
         prev_cost=0
         saver = tf.train.Saver()
@@ -7676,8 +8620,8 @@ class DNN():
                 for i in range(total_batch):
 
                     batch_x = X_train[i*batch_size:(i+1)*batch_size,]
-                    batch_y = y_train[i*batch_size:(i+1)*batch_size,]
-                    batch_y = dense_to_one_hot(batch_y)
+                    batch_y = y_train_one_hot[i*batch_size:(i+1)*batch_size,]
+                    # batch_y = dense_to_one_hot(batch_y)
                     _, c = sess.run([optimizer, cost], feed_dict = {xc: batch_x, yc: batch_y})
                     avg_cost += c / total_batch
 
@@ -7690,7 +8634,8 @@ class DNN():
                 pred_temp = tf.equal(tf.argmax(output_layer, 1), tf.argmax(yc, 1))
                 # pred_temp2= tf.argmax(output_layer, 1)
                 accuracy = tf.reduce_mean(tf.cast(pred_temp, "float"))
-                val_acc=accuracy.eval({xc: val_x, yc: dense_to_one_hot(val_y)})
+                # val_acc=accuracy.eval({xc: val_x, yc: dense_to_one_hot(val_y)})
+                val_acc=accuracy.eval({xc: val_x, yc: val_y_one_hot})
                # test_acc=accuracy.eval({xc: testX_nrm, yc: dense_to_one_hot(testY_nrm)})
 
                 #print ("Validation Accuracy:", accuracy.eval({x: val_x, y: dense_to_one_hot(val_y)})) 
@@ -7811,8 +8756,8 @@ class DNN():
         ## Step 1: load simulation outputs to Y4kriging
         numcase4kriging = 0 # number of cases for kriging
         indcase4kriging = [] # index of cases for kriging, start from 1
-        S4kriging = None # simulation inputs for kriging
-        Y4kriging = None # simulation outputs for kriging
+        S4kriging = pd.DataFrame({'A' : []}) # simulation inputs for kriging
+        Y4kriging = pd.DataFrame({'A' : []}) # simulation outputs for kriging
         for icase in indcase:
             # load SOFC_MP_ROM.dat to df1
             strcase = 'Case'+str(icase-1)+'Value'
@@ -7823,29 +8768,32 @@ class DNN():
                 
                 if len(lines) == 0: 
                     continue #print('Empty case')
-                if lines[1].strip() == '#FAILED': 
+
+                Failornot = False
+                for j in range(len(lines)):
+                    if lines[j].strip() == '#FAILED': 
+                        Failornot = True
+                if Failornot == True:
                     continue #print('"preprocessor" failed case')
                 
                 df0 = pd.DataFrame(np.array([['1a', '1b']]),columns=['Name', strcase])
                 df1 = pd.DataFrame(np.array([['1a', '1b']]),columns=['Name', strcase])
+                
                 for j in range(len(lines)):
-                    if j>1: # skip first two lines
-                        str01 = lines[j].split('=')
-                        str01[0]=str01[0].rstrip()
-                        str01[0]=str01[0].lstrip()
-                        
-                        if len(str01) == 1: continue
-                        
-                        # convert variables in SOFC_MP_ROM.dat to xxx_xxx format
-                        str_tmp = str01[0].strip().split()
-                        str_tmp = '_'.join(str_tmp)
-                        df0['Name']=str_tmp
-                        df0[strcase]=float(str01[1])
-                        if j==2:
-                            df1["Name"]=df0["Name"]
-                            df1[strcase]=df0[strcase]
-                        else:
-                            df1=pd.concat([df1,df0],sort=False, ignore_index=True)
+                    str01 = lines[j].split('=')
+                    str01[0]=str01[0].rstrip()
+                    str01[0]=str01[0].lstrip()
+                    if len(str01) == 1: continue
+                    # convert variables in SOFC_MP_ROM.dat to xxx_xxx format
+                    str_tmp = str01[0].strip().split()
+                    str_tmp = '_'.join(str_tmp)
+                    df0['Name']=str_tmp
+                    df0[strcase]=float(str01[1])
+                    if str_tmp == 'SimulationStatus':
+                        df1["Name"]=df0["Name"]
+                        df1[strcase]=df0[strcase]
+                    else:
+                        df1=pd.concat([df1,df0],sort=False, ignore_index=True)
                 
                 # exclude failed or non-converged cases
                 if int(df1.loc[0, [strcase]]) >= exclude_case:
@@ -7855,6 +8803,10 @@ class DNN():
                         Y4kriging = df1
                     else:
                         Y4kriging = pd.concat([Y4kriging, df1[strcase]], sort=False, axis=1)
+
+        if len(Y4kriging) == 0:
+            print('No cases summarized for the exclusion condition')
+            return
 
         ## Step 2: load simulation inputs to S4kriging
         inputfilename = source_path+'/LHS.dat'
@@ -8010,7 +8962,9 @@ class DNN():
             "VGRH2OPassRate",
             "VGRH2PassRate",
             "VGRCO2CaptureRate",
-            "VGRCOConvertRate"
+            "VGRCOConvertRate",
+            "FuelFlowRate",
+            "OxidantFlowRate"
         ]
 
         units_input = [
@@ -8022,12 +8976,12 @@ class DNN():
             "mol/s",
             "C",
             "-",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
             "C",
             "C",
             "%",
@@ -8039,11 +8993,11 @@ class DNN():
             "-",
             "%",
             "-",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
             "C",
             "C",
             "-",
@@ -8072,7 +9026,9 @@ class DNN():
             "-",
             "-",
             "-",
-            "-"
+            "-",
+            "mol/s",
+            "mol/s"
         ]
         
         names_output = [
@@ -8188,15 +9144,15 @@ class DNN():
                 print(i+1, ':', names_output[i]+', ['+units_output[i]+']', end = '\t\n')
         
         return names_input, units_input, names_output, units_output
-
-    def buildROM(self, indS = None, indY = None, frac4ROM = 80, filter_enabled = False, z_thres = 5):
+    
+    def buildROM(self, indS = None, indY = None, frac4ROM = 80, filter_enabled = False, z_thres = 5, cls_disabled = False):
         '''
         The function build the ROM for certain input/output variables
         '''
         print('############################################################\
               \nBuild the ROM\
               \n############################################################')
-        
+
         if not os.path.exists(self.allresultsFile) or not os.path.exists(self.allresults_infoFile):
             sys.exit('Code terminated: essential files missing')
         
@@ -8209,11 +9165,13 @@ class DNN():
         indS_index = [i-1 for i in indS]
         indY_index = [i-1 for i in indY]
             
-        if SYname[S_col] == 'SimulationStatus':
+        if SYname[S_col] == 'SimulationStatus' and cls_disabled == False:
             cls_enabled = True
         else:
             cls_enabled = False
-            
+        
+        # cls_enabled = False # to be deleted
+
         if cls_enabled == True:
             if 1 in indY: indY.remove(1) # remove SimulationStatus
             if 0 in indY_index: indY_index.remove(0)
@@ -8240,13 +9198,31 @@ class DNN():
             #cls_values = self.DNNCls_restore(maxiteration, S_train_nrm_cls, Y_train_cls, len(indS), DNNcls_load_file, DNNcls_save_file)
 
         ## Step 0: filter the noise and remove all failed/unconverged cases
+
+        # cls_enabled = True # to be deleted
+
         if cls_enabled == True:
             SYvalue_cov = SYvalue[SYvalue[:, S_col] == 1, :]
         else:
             SYvalue_cov = SYvalue
-            
+        
+        # cls_enabled = False # to be deleted
+
         if filter_enabled == True:
+
+            # remove unique-value columns
+            tmp_copy = copy.deepcopy(indY)
+            for j in indY:
+                tmp_data = SYvalue_cov[:, S_col+j-1]
+                if len(np.unique(tmp_data))<=5:
+                    tmp_copy.remove(j)
+                    indY_index.remove(j-1)
+                    print('Column "'+SYname[S_col+j-1]+'" is removed')
+            indY = copy.deepcopy(tmp_copy)
+
+            # remove outlier rows
             SY_row_rm = []
+            
             for j in indY:
                 tmp_data = SYvalue_cov[:, S_col+j-1]
                 while(True):
@@ -8293,7 +9269,7 @@ class DNN():
             rndnumberlist = list(range(numtraining, S_row))
             restlist = list(range(numtraining))
             
-        ## Step 3: write to info.dat, intraining.dat, info.dat and inCrossVali.dat 
+        ## Step 3: write to intraining.dat, info.dat and inCrossVali.dat 
         with open(self.infoFile, 'w') as f:
             f.write('input_col\toutput_col\n')
             f.write(str(len(indS))+'\t'+str(len(indY))+'\n')
@@ -8361,6 +9337,11 @@ class DNN():
         trainingoutput_file_cls = trainingoutput_file.replace(".dat", "")+'_cls.dat'
         
         if cls_enabled == True:
+
+            print("classifier outputs' dimension:")
+            print(len(cls_values))
+            # print(cls_values)
+
             w1,w2,b1,b2 = cls_values
             with open(trainingoutput_file_cls, 'w') as f:
                 f.write('w1\n')
@@ -8392,7 +9373,22 @@ class DNN():
                     f.write(str(values_tmp[i]) + '\n')
                 f.write('\n')
                 f.write('end\n')
+
+                # add contents of allResults.dat to outTraining_cls.dat
+                SY_row, SY_col = SYvalue.shape
+                f.write('\n')
+                for i in range(SY_col):
+                    f.write(SYname[i] + '\t')
+                f.write('\n')
+                for i in range(SY_row):
+                    for j in range(SY_col):
+                        f.write('{:11.4E}\t'.format(SYvalue[i, j]))
+                    f.write('\n')
         
+        print("ROM outputs' dimension:")
+        print(len(model_values))
+        # print(model_values)
+
         w1,w2,w3,w4,w5,b1,b2,b3,b4,b5 = model_values
         with open(self.outtrainingFile, 'w') as f:
             f.write('w1\n')
@@ -8490,7 +9486,25 @@ class DNN():
                 f.write(str(values_tmp[i]) + '\n')
             f.write('\n')
             f.write('end\n')
-            
+
+            # add contents of info.dat, inTraining.dat to outTraining.dat
+            f.write('\n')
+            f.write('input_output_col\n')
+            f.write(str(len(indS))+'\t'+str(len(indY))+'\n')
+
+            f.write('\n')
+            for i in indS:
+                f.write(Sname[i-1] + '\t')
+            for i in indY:
+                f.write(Yname[i-1] + '\t')
+            f.write('\n')
+            for i in range(S_row):
+                for j in indS:
+                    f.write('{:11.4E}\t'.format(S[i, j-1]))
+                for j in indY:
+                    f.write('{:11.4E}\t'.format(Y[i, j-1]))
+                f.write('\n')
+
         ## Step 6: write to outCrossVali.dat
         Y_vali_pre = Y_vali_nrm_pre*stdY+meanY
         f0 = open(self.outcrossvaliFile, 'w')
@@ -8531,6 +9545,538 @@ class DNN():
         
         print('End of code\n')
     
+    def buildROM_NETL(self, indS = None, indY = None, frac4ROM = 80, filter_enabled = False, z_thres = 5):
+        '''
+        The function build the ROM for certain input/output variables
+        '''
+        print('############################################################\
+              \nBuild the ROM\
+              \n############################################################')
+        
+        if not os.path.exists(self.allresultsFile) or not os.path.exists(self.allresults_infoFile):
+            sys.exit('Code terminated: essential files missing')
+        
+        ## Step -1: train the classifier
+        SYname, SYvalue = self.file_read(self.allresultsFile)
+        infoname, infovalue = self.file_read(self.allresults_infoFile)
+        [S_row, Y_row, S_col, Y_col] = [len(SYvalue), len(SYvalue), int(infovalue[0,0]), int(infovalue[0,1])]
+        if indS == None: indS = list(range(1, S_col+1))
+        if indY == None: indY = list(range(1, Y_col+1))
+        indS_index = [i-1 for i in indS]
+        indY_index = [i-1 for i in indY]
+            
+        if SYname[S_col] == 'SimulationStatus':
+            cls_enabled = True
+        else:
+            cls_enabled = False
+        
+        # cls_enabled = False # to be deleted
+
+        if cls_enabled == True:
+            if 1 in indY: indY.remove(1) # remove SimulationStatus
+            if 0 in indY_index: indY_index.remove(0)
+                
+            for i in range(S_row):
+                if SYvalue[i, S_col] == -1: SYvalue[i, S_col] = 0
+            temp = SYvalue[:, 0:S_col+1]
+            S_train_cls = temp[:, indS_index]
+            Y_train_cls = temp[:, S_col]
+            meanS_cls = S_train_cls.mean(axis=0)
+            stdS_cls = S_train_cls.std(axis=0)
+            S_train_nrm_cls = (S_train_cls-meanS_cls)/stdS_cls
+            
+            Y_train_cls = Y_train_cls. astype(int)
+            
+            maxiteration = 50000
+            trainingoutput_file = self.outtrainingFile
+            DNNcls_load_file = trainingoutput_file.replace(".dat", "")+'_cls'
+            DNNcls_save_file = DNNcls_load_file
+            # Initial training
+            acc_val, cls_values = self.DNNCls(maxiteration, S_train_nrm_cls, Y_train_cls, len(indS), DNNcls_save_file)
+            print("Classifier accuracy: ", acc_val)
+            # Restore DNN, continue training
+            #cls_values = self.DNNCls_restore(maxiteration, S_train_nrm_cls, Y_train_cls, len(indS), DNNcls_load_file, DNNcls_save_file)
+
+        ## Step 0: filter the noise and remove all failed/unconverged cases
+
+        # cls_enabled = True # to be deleted
+
+        if cls_enabled == True:
+            SYvalue_cov = SYvalue[SYvalue[:, S_col] == 1, :]
+        else:
+            SYvalue_cov = SYvalue
+        
+        # cls_enabled = False # to be deleted
+
+        if filter_enabled == True:
+            # remove unique-value columns
+            tmp_copy = copy.deepcopy(indY)
+            for j in indY:
+                tmp_data = SYvalue_cov[:, S_col+j-1]
+                if len(np.unique(tmp_data))<=5:
+                    tmp_copy.remove(j)
+                    indY_index.remove(j-1)
+                    print('Column "'+SYname[S_col+j-1]+'" is removed')
+            indY = copy.deepcopy(tmp_copy)
+
+            # remove outlier rows
+            SY_row_rm = []
+            for j in indY:
+                tmp_data = SYvalue_cov[:, S_col+j-1]
+                while(True):
+                    z = np.abs(stats.zscore(tmp_data, axis = 0))
+                    result = np.where(z > z_thres)
+                    index = list(result[0])
+                    # line removal list
+                    if len(index) == 0: break
+                    SY_row_rm += index
+                    SY_row_rm = list(dict.fromkeys(SY_row_rm))
+                    # replace outliers with mean
+                    tmp_data[SY_row_rm] = np.mean(tmp_data)
+            # remove rows and columns accroding to SY_row_rm and SY_col_rm
+            SYvalue_new = np.delete(SYvalue_cov, SY_row_rm, axis = 0)
+            print('Noise filter: trim ' + str(len(SY_row_rm)) + ' rows from a total of ' + str(len(SYvalue_cov)) + ' rows')
+        else:
+            SYvalue_new = SYvalue_cov
+            
+        ## Step 1: load all simulation results
+        [S_row, Y_row, S_col, Y_col] = [len(SYvalue_new), len(SYvalue_new), int(infovalue[0,0]), int(infovalue[0,1])]
+        S = copy.deepcopy(SYvalue_new[:, :S_col])
+        Y = copy.deepcopy(SYvalue_new[:, S_col:])
+        Sname = copy.deepcopy(SYname[:S_col])
+        Yname = copy.deepcopy(SYname[S_col:])
+
+        ## Step 2: compute istep, numcrossvali, rndnumberlist
+        if frac4ROM >= 0:
+            numtraining = int(S_row*frac4ROM/100.0)
+            numcrossvali = S_row-numtraining
+            if numtraining < (2**len(indS)): 
+                print('warning: data set to build the ROM is not large enough')
+            if numcrossvali > 0:
+                istep = int((S_row)/numcrossvali)
+                rndnumberlist =[]
+                restlist = list(range(S_row))
+                for i in range(1, numcrossvali+1):
+                    rndnumberlist.append(i*istep-1)
+                restlist = [i for i in restlist if i not in rndnumberlist]
+            else:
+                sys.exit('Code terminated: the fraction of training dataset cannot be 100%')
+        else:
+            numtraining = S_row-1000
+            numcrossvali = S_row-numtraining
+            rndnumberlist = list(range(numtraining, S_row))
+            restlist = list(range(numtraining))
+            
+        ## Step 3: write to intraining.dat, info.dat and inCrossVali.dat 
+        with open(self.infoFile, 'w') as f:
+            f.write('input_col\toutput_col\n')
+            f.write(str(len(indS))+'\t'+str(len(indY))+'\n')
+        f1 = open(self.intrainingFile, 'w')
+        f3 = open(self.incrossvaliFile, 'w')
+        for i in indS:
+            f1.write(Sname[i-1] + '\t')
+            f3.write(Sname[i-1] + '\t')
+        for i in indY:
+            f1.write(Yname[i-1] + '\t')
+            f3.write(Yname[i-1] + '\t')
+        f1.write('\n')
+        f3.write('\n')
+        for i in range(S_row):
+            if i in rndnumberlist:
+                for j in indS:
+                    f3.write('{:11.4E}\t'.format(S[i, j-1]))
+                for j in indY:
+                    f3.write('{:11.4E}\t'.format(Y[i, j-1]))
+                f3.write('\n')
+            else:
+                for j in indS:
+                    f1.write('{:11.4E}\t'.format(S[i, j-1]))
+                for j in indY:
+                    f1.write('{:11.4E}\t'.format(Y[i, j-1]))
+                f1.write('\n')
+        f1.close()
+        f3.close()
+        
+        ## Step 4: perform training and prediction
+        temp = S[restlist, :]
+        S_train = temp[:, indS_index]
+        temp = S[rndnumberlist, :]
+        S_vali = temp[:, indS_index]
+        temp = Y[restlist, :]
+        Y_train = temp[:, indY_index]
+        temp = Y[rndnumberlist, :]
+        Y_vali = temp[:, indY_index]
+        
+        meanS=S_train.mean(axis=0)
+        stdS=S_train.std(axis=0)
+        meanY=Y_train.mean(axis=0)
+        stdY=Y_train.std(axis=0)
+        S_train_nrm=(S_train-meanS)/stdS
+        Y_train_nrm=(Y_train-meanY)/stdY
+        S_vali_nrm=(S_vali-meanS)/stdS
+
+        maxiteration = 50000 
+        trainingoutput_file = self.outtrainingFile
+        DNN_load_file = trainingoutput_file.replace(".dat", "")
+        DNN_save_file = DNN_load_file
+        DNNsize = [32, 200, 200, 256]
+        
+        # Initial training
+        Y_vali_nrm_pre, model_values = self.DNNROM2(maxiteration, 
+                                                   S_train_nrm, Y_train_nrm, S_vali_nrm, 
+                                                   len(indS), len(indY), DNN_save_file, DNNsize)
+        # Restore DNN, continue training
+        # Y_vali_nrm_pre, model_values = self.DNNROM_restore2(maxiteration, S_train_nrm, Y_train_nrm, S_vali_nrm, len(indS), len(indY), DNN_load_file, DNN_save_file, DNNsize)
+        # Load a DNN, and prediction
+        #Y_vali_nrm_load_pre = self.DNNROM_prediction(S_vali_nrm, len(indS), len(indY), DNN_load_file)
+        
+        ## Step 5: save built ROM
+        trainingoutput_file = self.outtrainingFile
+        trainingoutput_file_cls = trainingoutput_file.replace(".dat", "")+'_cls.dat'
+        
+        if cls_enabled == True:
+            w1,w2,b1,b2 = cls_values
+
+            with open(trainingoutput_file_cls, 'w') as f:
+                f.write('w1\n')
+                values_tmp = np.copy(w1)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w2\n')
+                values_tmp = np.copy(w2)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('b1\n')
+                values_tmp = np.copy(b1)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b2\n')
+                values_tmp = np.copy(b2)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('end\n')
+
+                # add contents of allResults.dat to outTraining_cls.dat
+                SY_row, SY_col = SYvalue.shape
+                f.write('\n')
+                for i in range(SY_col):
+                    f.write(SYname[i] + '\t')
+                f.write('\n')
+                for i in range(SY_row):
+                    for j in range(SY_col):
+                        f.write('{:11.4E}\t'.format(SYvalue[i, j]))
+                    f.write('\n')
+
+            # write classifier ROMs in NETL required format
+            filename_tmp = trainingoutput_file_cls = self.work_path+'/cls_w1.dat'
+            with open(filename_tmp, 'w') as f:
+                values_tmp = np.copy(w1)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+
+            filename_tmp = trainingoutput_file_cls = self.work_path+'/cls_w2.dat'
+            with open(filename_tmp, 'w') as f:
+                values_tmp = np.copy(w2)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+
+            filename_tmp = trainingoutput_file_cls = self.work_path+'/cls_b1.dat'
+            with open(filename_tmp, 'w') as f:
+                values_tmp = np.copy(b1)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                    
+            filename_tmp = trainingoutput_file_cls = self.work_path+'/cls_b2.dat'
+            with open(filename_tmp, 'w') as f:
+                values_tmp = np.copy(b2)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+
+        w1,w2,w3,w4,w5,b1,b2,b3,b4,b5 = model_values
+        with open(self.outtrainingFile, 'w') as f:
+            f.write('w1\n')
+            values_tmp = np.copy(w1)
+            [row, col] = values_tmp.shape
+            for i in range(row):
+                for j in range(col-1):
+                    f.write(str(values_tmp[i, j]) + ' ')
+                f.write(str(values_tmp[i, col-1]) + '\n')
+            f.write('\n')
+            f.write('w2\n')
+            values_tmp = np.copy(w2)
+            [row, col] = values_tmp.shape
+            for i in range(row):
+                for j in range(col-1):
+                    f.write(str(values_tmp[i, j]) + ' ')
+                f.write(str(values_tmp[i, col-1]) + '\n')
+            f.write('\n')
+            f.write('w3\n')
+            values_tmp = np.copy(w3)
+            [row, col] = values_tmp.shape
+            for i in range(row):
+                for j in range(col-1):
+                    f.write(str(values_tmp[i, j]) + ' ')
+                f.write(str(values_tmp[i, col-1]) + '\n')
+            f.write('\n')
+            f.write('w4\n')
+            values_tmp = np.copy(w4)
+            [row, col] = values_tmp.shape
+            for i in range(row):
+                for j in range(col-1):
+                    f.write(str(values_tmp[i, j]) + ' ')
+                f.write(str(values_tmp[i, col-1]) + '\n')
+            f.write('\n')
+            f.write('w5\n')
+            values_tmp = np.copy(w5)
+            [row, col] = values_tmp.shape
+            for i in range(row):
+                for j in range(col-1):
+                    f.write(str(values_tmp[i, j]) + ' ')
+                f.write(str(values_tmp[i, col-1]) + '\n')
+            f.write('\n')
+            f.write('b1\n')
+            values_tmp = np.copy(b1)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+            f.write('\n')
+            f.write('b2\n')
+            values_tmp = np.copy(b2)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+            f.write('\n')
+            f.write('b3\n')
+            values_tmp = np.copy(b3)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+            f.write('\n')
+            f.write('b4\n')
+            values_tmp = np.copy(b4)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+            f.write('\n')
+            f.write('b5\n')
+            values_tmp = np.copy(b5)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+            f.write('\n')
+            f.write('meanS\n')
+            values_tmp = np.copy(meanS)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+            f.write('\n')
+            f.write('meanY\n')
+            values_tmp = np.copy(meanY)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+            f.write('\n')
+            f.write('stdS\n')
+            values_tmp = np.copy(stdS)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+            f.write('\n')
+            f.write('stdY\n')
+            values_tmp = np.copy(stdY)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+            f.write('\n')
+            f.write('end\n')
+
+            # add contents of info.dat, inTraining.dat to outTraining.dat
+            f.write('\n')
+            f.write('input_output_col\n')
+            f.write(str(len(indS))+'\t'+str(len(indY))+'\n')
+
+            f.write('\n')
+            for i in indS:
+                f.write(Sname[i-1] + '\t')
+            for i in indY:
+                f.write(Yname[i-1] + '\t')
+            f.write('\n')
+            for i in range(S_row):
+                for j in indS:
+                    f.write('{:11.4E}\t'.format(S[i, j-1]))
+                for j in indY:
+                    f.write('{:11.4E}\t'.format(Y[i, j-1]))
+                f.write('\n')
+
+        # write trained ROMs in NETL required format
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_w1.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(w1)
+            [row, col] = values_tmp.shape
+            for i in range(row):
+                for j in range(col-1):
+                    f.write(str(values_tmp[i, j]) + ' ')
+                f.write(str(values_tmp[i, col-1]) + '\n')
+
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_w2.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(w2)
+            [row, col] = values_tmp.shape
+            for i in range(row):
+                for j in range(col-1):
+                    f.write(str(values_tmp[i, j]) + ' ')
+                f.write(str(values_tmp[i, col-1]) + '\n')
+
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_w3.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(w3)
+            [row, col] = values_tmp.shape
+            for i in range(row):
+                for j in range(col-1):
+                    f.write(str(values_tmp[i, j]) + ' ')
+                f.write(str(values_tmp[i, col-1]) + '\n')
+                
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_w4.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(w4)
+            [row, col] = values_tmp.shape
+            for i in range(row):
+                for j in range(col-1):
+                    f.write(str(values_tmp[i, j]) + ' ')
+                f.write(str(values_tmp[i, col-1]) + '\n')  
+
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_w5.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(w5)
+            [row, col] = values_tmp.shape
+            for i in range(row):
+                for j in range(col-1):
+                    f.write(str(values_tmp[i, j]) + ' ')
+                f.write(str(values_tmp[i, col-1]) + '\n')
+
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_b1.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(b1)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_b2.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(b2)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+                
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_b3.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(b3)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+        
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_b4.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(b4)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_b5.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(b5)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_meanx.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(meanS)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+                
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_meany.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(meanY)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n') 
+
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_stdx.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(stdS)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+
+        filename_tmp = trainingoutput_file_cls = self.work_path+'/ROM_stdy.dat'
+        with open(filename_tmp, 'w') as f:
+            values_tmp = np.copy(stdY)
+            row = len(values_tmp)
+            for i in range(row):
+                f.write(str(values_tmp[i]) + '\n')
+
+        ## Step 6: write to outCrossVali.dat
+        Y_vali_pre = Y_vali_nrm_pre*stdY+meanY
+        f0 = open(self.outcrossvaliFile, 'w')
+        for i in indY:
+            name = Yname[i-1]
+            f0.write(name + '\t')
+        f0.write('\n')
+        for i in range(len(rndnumberlist)):
+            for j in range(len(indY)):
+                f0.write('{:11.4E}\t'.format(Y_vali_pre[i,j]-Y_vali[i, j]))
+            f0.write('\n')
+        f0.close()
+        
+        ## Step 7: update global variables
+        [self.S_row, self.Y_row, self.S_col, self.Y_col] = [len(restlist), len(restlist), len(indS), len(indY)]
+        self.S_norm = S_train_nrm
+        self.Y_norm = Y_train_nrm
+        self.S = S_train
+        self.Y = Y_train
+        [self.stdS, self.stdY, self.meanS, self.meanY] = [stdS, stdY, meanS, meanY]
+        Sname_new = [ Sname[i] for i in indS_index]
+        Yname_new = [ Yname[i] for i in indY_index]
+        self.Sname = Sname_new
+        self.Yname = Yname_new
+        
+        ## Step 8: write classifier accuracy and ROM prediction accuracy
+        int_95 = self.percent2intervl(95) # 95% confidence interval
+        trainingoutput_file = self.outtrainingFile
+        trainingoutput_accuracy = trainingoutput_file.replace(".dat", "")+'_acc.dat'
+        with open(trainingoutput_accuracy, 'w') as f:
+            if cls_enabled == True:
+                f.write('Classifier Accuracy: \n')
+                f.write(str(acc_val) + '\n')
+            f.write('ROM Accuracy (95% confidence interval): \n')
+            for i in range(len(Yname_new)):
+                f.write(Yname_new[i])
+                f.write('\t' + str(int_95[i]) + '\n')
+        
+        print('End of code\n')
+
     def Generate_inprediction(self, numsample = None, listmin = None, listmax = None):
         '''
         The function generates prediction input if it doesn't exist by Latin Hypercube Sampling
@@ -8593,8 +10139,8 @@ class DNN():
         # Step 1: Load the training data S, Y and prediction data X
         print('Step 1: Load the training data S, Y and prediction input data X')
         SYname, SYvalue = self.file_read(self.intrainingFile)
-        Xname, Xvalue = self.file_read(self.inpredictionFile)
         infoname, infovalue = self.file_read(self.infoFile)
+        Xname, Xvalue = self.file_read(self.inpredictionFile)
         [S_row, Y_row, S_col, Y_col] = [len(SYvalue), len(SYvalue), int(infovalue[0,0]), int(infovalue[0,1])]
         
         # Step 1.5: Load the trained classifier
@@ -8839,6 +10385,8 @@ class DNN():
         
         # Step 3.5: perform prediction of SimulationStatus
         if cls_enabled == True:
+            Xy_cls = np.zeros(X_row)
+
             for j in range(X_row):
                 inputX_cls = X_nrm[j,:]
                 m1_cls = np.matmul(inputX_cls,w1_cls)
@@ -8853,15 +10401,7 @@ class DNN():
                     m2ba_cls[i] = m2b_cls[i]
 
                 outputX_cls = m2ba_cls
-                if j == 0:
-                    Xy_cls = outputX_cls
-                else:
-                    Xy_cls = np.vstack((Xy_cls, outputX_cls))
-            
-            #convert to 0 and 1
-            Xy_cls = np.argmax(Xy_cls, 1)
-            # print(len(Xy_cls))
-            # print(sum(Xy_cls))
+                Xy_cls[j] = np.argmax(outputX_cls)
 
             # DNNcls_load_file = trainingoutput_file.replace(".dat", "")+'_cls'
             # SimuStatus = self.DNNCls_prediction(X_nrm, S_col, DNNcls_load_file)
@@ -8869,6 +10409,9 @@ class DNN():
             # print((Xy_cls==SimuStatus).all())
 
         # Step 4: perform prediction
+        Xy = np.zeros((X_row, Y_col))
+        Xy_nrm = np.zeros((X_row, Y_col))
+
         for j in range(X_row):
             inputX = X_nrm[j,:]
             m1 = np.matmul(inputX,w1)
@@ -8899,12 +10442,16 @@ class DNN():
                     
             outputX_nrm = m5ba
             outputX = m5ba*stdY+meanY
-            if j == 0:
-                Xy_nrm = outputX_nrm
-                Xy = outputX
-            else:
-                Xy_nrm = np.vstack((Xy_nrm, outputX_nrm))
-                Xy = np.vstack((Xy, outputX))
+
+            Xy_nrm[j,:] = outputX_nrm
+            Xy[j,:] = outputX
+
+            # if j == 0:
+            #     Xy_nrm = outputX_nrm
+            #     Xy = outputX
+            # else:
+            #     Xy_nrm = np.vstack((Xy_nrm, outputX_nrm))
+            #     Xy = np.vstack((Xy, outputX))
 
         print('\tFinish Prediction - Xy')
 
@@ -8958,9 +10505,12 @@ class DNN():
         names_input, units_input, names_output, units_output = self.variable_options()
         Yunit = []
         for i in range(len(Yname)):
-            tempindex = names_output.index(Yname[i])
-            tempunit = units_output[tempindex]
-            Yunit.append(tempunit)
+            try:
+                tempindex = names_output.index(Yname[i])
+                tempunit = units_output[tempindex]
+                Yunit.append(tempunit)
+            except:
+                Yunit.append('Unknown')
             
         # compute confidence interval
         interval_all = np.zeros((len(Yname),),dtype=np.float64)
@@ -9009,9 +10559,12 @@ class DNN():
         names_input, units_input, names_output, units_output = self.variable_options()
         Yunit = []
         for i in range(len(Yname)):
-            tempindex = names_output.index(Yname[i])
-            tempunit = units_output[tempindex]
-            Yunit.append(tempunit)
+            try:
+                tempindex = names_output.index(Yname[i])
+                tempunit = units_output[tempindex]
+                Yunit.append(tempunit)
+            except:
+                Yunit.append('Unknown')
         
         # compute confidence percentage
         percentage_all = np.zeros((len(Yname),),dtype=np.float64)
@@ -13256,6 +14809,17 @@ class PhyDNN():
 
     def DNNCls(self, maxiteration,trainX_nrm,trainY_nrm,testX_nrm,testY_nrm,input_num_units):
         
+        # covert output scalar to vector https://stackoverflow.com/questions/43543594/label-scalar-into-one-hot-in-tensorr-flow-code
+        def dense_to_one_hot(labels_dense, num_classes=2):
+            """Convert class labels from scalars to one-hot vectors"""
+            num_labels = labels_dense.shape[0]
+            #index_offset = np.arange(num_labels) * num_classes
+            labels_one_hot = np.zeros((num_labels, num_classes))
+            for ii in range(num_labels):
+                labels_one_hot[ii,int(labels_dense[ii])]=1
+            #labels_one_hot.flat[index_offset + labels_dense.ravel()] = 1
+            return labels_one_hot
+
         hidden_num_units = 500
         output_num_units = 2
         seed=88
@@ -13264,6 +14828,11 @@ class PhyDNN():
 
         X_train, val_x = trainX_nrm[:split_size],trainX_nrm[split_size:]
         y_train, val_y = trainY_nrm[:split_size], trainY_nrm[split_size:]
+
+        y_train_one_hot = dense_to_one_hot(y_train)
+        val_y_one_hot = dense_to_one_hot(val_y)
+        testY_nrm_one_hot = dense_to_one_hot(testY_nrm)
+
         print("DNN classification training start ...")
         print("training data set size  ", X_train.shape[0]," * ",X_train.shape[1])
         print("validation data set size", val_x.shape[0]," * ",val_x.shape[1])   
@@ -13313,16 +14882,6 @@ class PhyDNN():
         #merged = tf.summary.merge_all()
         #writer = tf.summary.FileWriter(cwd)
         #saver = tf.train.Saver()
-        # covert output scalar to vector https://stackoverflow.com/questions/43543594/label-scalar-into-one-hot-in-tensorr-flow-code
-        def dense_to_one_hot(labels_dense, num_classes=2):
-            """Convert class labels from scalars to one-hot vectors"""
-            num_labels = labels_dense.shape[0]
-            #index_offset = np.arange(num_labels) * num_classes
-            labels_one_hot = np.zeros((num_labels, num_classes))
-            for ii in range(num_labels):
-                labels_one_hot[ii,int(labels_dense[ii])]=1
-            #labels_one_hot.flat[index_offset + labels_dense.ravel()] = 1
-            return labels_one_hot
         
         prev_cost=0
         with tf.Session() as sess:
@@ -13333,8 +14892,8 @@ class PhyDNN():
                 for i in range(total_batch):
 
                     batch_x = X_train[i*batch_size:(i+1)*batch_size,]
-                    batch_y = y_train[i*batch_size:(i+1)*batch_size,]
-                    batch_y = dense_to_one_hot(batch_y)
+                    batch_y = y_train_one_hot[i*batch_size:(i+1)*batch_size,]
+                    # batch_y = dense_to_one_hot(batch_y)
                     _, c = sess.run([optimizer, cost], feed_dict = {xc: batch_x, yc: batch_y})
                     avg_cost += c / total_batch
 
@@ -13346,8 +14905,10 @@ class PhyDNN():
                 #find predictions on val set #location of the catagory, can be greater than 2
                 pred_temp = tf.equal(tf.argmax(output_layer, 1), tf.argmax(yc, 1))
                 accuracy = tf.reduce_mean(tf.cast(pred_temp, "float"))
-                val_acc=accuracy.eval({xc: val_x, yc: dense_to_one_hot(val_y)})
-                test_acc=accuracy.eval({xc: testX_nrm, yc: dense_to_one_hot(testY_nrm)})
+                # val_acc=accuracy.eval({xc: val_x, yc: dense_to_one_hot(val_y)})
+                # test_acc=accuracy.eval({xc: testX_nrm, yc: dense_to_one_hot(testY_nrm)})
+                val_acc=accuracy.eval({xc: val_x, yc: val_y_one_hot})
+                test_acc=accuracy.eval({xc: testX_nrm, yc: testY_nrm_one_hot})
 
                 #print ("Validation Accuracy:", accuracy.eval({x: val_x, y: dense_to_one_hot(val_y)})) 
                 if epoch %2000 ==0 :print ('Epoch:', (epoch+1), 'cost =', '{:.5f}'.format(avg_cost),"  Validation accuracy:", val_acc,"  Test accuracy:",test_acc) 
@@ -13744,8 +15305,8 @@ class PhyDNN():
         ## Step 1: load simulation outputs to Y4kriging
         numcase4kriging = 0 # number of cases for kriging
         indcase4kriging = [] # index of cases for kriging, start from 1
-        S4kriging = None # simulation inputs for kriging
-        Y4kriging = None # simulation outputs for kriging
+        S4kriging = pd.DataFrame({'A' : []}) # simulation inputs for kriging
+        Y4kriging = pd.DataFrame({'A' : []}) # simulation outputs for kriging
         for icase in indcase:
             # load SOFC_MP_ROM.dat to df1
             strcase = 'Case'+str(icase-1)+'Value'
@@ -13756,29 +15317,32 @@ class PhyDNN():
                 
                 if len(lines) == 0: 
                     continue #print('Empty case')
-                if lines[1].strip() == '#FAILED': 
+                
+                Failornot = False
+                for j in range(len(lines)):
+                    if lines[j].strip() == '#FAILED': 
+                        Failornot = True
+                if Failornot == True:
                     continue #print('"preprocessor" failed case')
                 
                 df0 = pd.DataFrame(np.array([['1a', '1b']]),columns=['Name', strcase])
                 df1 = pd.DataFrame(np.array([['1a', '1b']]),columns=['Name', strcase])
+                
                 for j in range(len(lines)):
-                    if j>1: # skip first two lines
-                        str01 = lines[j].split('=')
-                        str01[0]=str01[0].rstrip()
-                        str01[0]=str01[0].lstrip()
-                        
-                        if len(str01) == 1: continue
-                        
-                        # convert variables in SOFC_MP_ROM.dat to xxx_xxx format
-                        str_tmp = str01[0].strip().split()
-                        str_tmp = '_'.join(str_tmp)
-                        df0['Name']=str_tmp
-                        df0[strcase]=float(str01[1])
-                        if j==2:
-                            df1["Name"]=df0["Name"]
-                            df1[strcase]=df0[strcase]
-                        else:
-                            df1=pd.concat([df1,df0],sort=False, ignore_index=True)
+                    str01 = lines[j].split('=')
+                    str01[0]=str01[0].rstrip()
+                    str01[0]=str01[0].lstrip()
+                    if len(str01) == 1: continue
+                    # convert variables in SOFC_MP_ROM.dat to xxx_xxx format
+                    str_tmp = str01[0].strip().split()
+                    str_tmp = '_'.join(str_tmp)
+                    df0['Name']=str_tmp
+                    df0[strcase]=float(str01[1])
+                    if str_tmp == 'SimulationStatus':
+                        df1["Name"]=df0["Name"]
+                        df1[strcase]=df0[strcase]
+                    else:
+                        df1=pd.concat([df1,df0],sort=False, ignore_index=True)
                 
                 # exclude failed or non-converged cases
                 if int(df1.loc[0, [strcase]]) >= exclude_case:
@@ -13788,6 +15352,10 @@ class PhyDNN():
                         Y4kriging = df1
                     else:
                         Y4kriging = pd.concat([Y4kriging, df1[strcase]], sort=False, axis=1)
+
+        if len(Y4kriging) == 0:
+            print('No cases summarized for the exclusion condition')
+            return
 
         ## Step 2: load simulation inputs to S4kriging
         inputfilename = source_path+'/LHS.dat'
@@ -13943,7 +15511,9 @@ class PhyDNN():
             "VGRH2OPassRate",
             "VGRH2PassRate",
             "VGRCO2CaptureRate",
-            "VGRCOConvertRate"
+            "VGRCOConvertRate",
+            "FuelFlowRate",
+            "OxidantFlowRate"
         ]
 
         units_input = [
@@ -13955,12 +15525,12 @@ class PhyDNN():
             "mol/s",
             "C",
             "-",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
             "C",
             "C",
             "%",
@@ -13972,11 +15542,11 @@ class PhyDNN():
             "-",
             "%",
             "-",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
-            "mol/s",
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
             "C",
             "C",
             "-",
@@ -14005,7 +15575,9 @@ class PhyDNN():
             "-",
             "-",
             "-",
-            "-"
+            "-",
+            "mol/s",
+            "mol/s"
         ]
         
         names_output = [
@@ -14121,7 +15693,8 @@ class PhyDNN():
                 print(i+1, ':', names_output[i]+', ['+units_output[i]+']', end = '\t\n')
         
         return names_input, units_input, names_output, units_output
-
+    
+    # this is major ROM training function
     def buildROM(self, frac4ROM = 80, preprocessor_name = None, igfc = None,
                  filter_enabled = True, z_thres = 5, inputbasefilename = None):
         '''
@@ -14161,6 +15734,9 @@ class PhyDNN():
             cls_enabled = False
 
         ## 1.3-- call "preprocessor", train classifier, etc.
+
+        # cls_enabled = False # to be deleted
+
         if cls_enabled == True:
             ## 1.3 split dataset into 3 sets
             if frac4ROM >= 0:
@@ -14211,6 +15787,1241 @@ class PhyDNN():
             maxiteration = 50000
             DNNsize = [64, 200, 200, 256]
             Y_4cls_ROM_vali_cls_train_nrm_pred, Y_4cls_vali_nrm_pred, cls_ROM_values =             self.DNNROM_4cls(maxiteration, S_4cls_ROM_train_nrm, Y_4cls_ROM_train_nrm,                              S_4cls_ROM_vali_cls_train_nrm, S_4cls_vali_nrm, len(indS), len(indY), DNNsize)
+
+            ## 1.7 call preprocessor
+            succs_cls_training = np.zeros((S_4cls_ROM_vali_cls_train_nrm.shape[0],1),dtype=np.float64)
+            succs_cls_testing = np.zeros((S_4cls_vali_nrm.shape[0],1),dtype=np.float64)
+            
+            # load inputbasefilename (base.dat or input000.dat)
+            if inputbasefilename != None:
+                text_file=open(inputbasefilename,"r")
+                lines = text_file.readlines()
+                df2 = pd.DataFrame(np.array([['1a', '1b', '1c']]),columns=['Name', 'Value', 'Updated'])
+                df3 = pd.DataFrame(columns=['Name', 'Value', 'Updated']) # currently, "Updated" feature not active
+                for j in range(len(lines)):
+                    str01 = lines[j].split('=')
+                    if len(str01) == 2:
+                        str01[0]=str01[0].rstrip()
+                        str01[0]=str01[0].lstrip()
+                        try:
+                            df2['Name']=str01[0]
+                            df2['Value']=float(str01[1])
+                            df2['Updated']=False
+                            df3=pd.concat([df3,df2],sort=False,ignore_index=True)
+                        except:
+                            pass
+
+            # find index of preprocessor inputs
+            try: 
+                index1 = Sname_4cls.index("Average_CurrentDensity")
+            except:
+                index1 = -1
+                try:
+                    J_fix = df3.loc[df3["Name"]=="Average_CurrentDensity","Value"].iloc[0]/10.0  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index2 = Sname_4cls.index("Stack_Fuel_Utilization")
+            except:
+                index2 = -1
+                try:
+                    FU_fix = df3.loc[df3["Name"]=="Stack_Fuel_Utilization","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index3 = Sname_4cls.index("Stack_Oxidant_Utilization")
+            except:
+                index3 = -1
+                try:
+                    AU_fix = df3.loc[df3["Name"]=="Stack_Oxidant_Utilization","Value"].iloc[0]/10.0  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index4 = Sname_4cls.index("OxygenToCarbon_Ratio")
+            except:
+                index4 = -1
+                try:
+                    OCR_fix = df3.loc[df3["Name"]=="OxygenToCarbon_Ratio","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index5 = Sname_4cls.index("Internal_Reforming")
+            except:
+                index5 = -1
+                try:
+                    IR_fix = df3.loc[df3["Name"]=="Internal_Reforming","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index6 = Sname_4cls.index("Oxidant_Recirculation")
+            except:
+                index6 = -1
+                try:
+                    Arec_fix = df3.loc[df3["Name"]=="Oxidant_Recirculation","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index7= Sname_4cls.index("PreReform")
+            except:
+                index7 = -1
+                try:
+                    PreReform_fix = df3.loc[df3["Name"]=="PreReform","Value"].iloc[0]  
+                except:
+                    # sys.exit('Code terminated: "preprocessor" input not defined')
+                    PreReform_fix=0.2 #[]
+            try: 
+                index8= Sname_4cls.index("cellsize")
+            except:
+                index8 = -1
+                try:
+                    cellsize_fix = df3.loc[df3["Name"]=="cellsize","Value"].iloc[0]  
+                except:
+                    # sys.exit('Code terminated: "preprocessor" input not defined')
+                    cellsize_fix=550 #[cm2]
+                
+            if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                try: 
+                    index9 = Sname_4cls.index("VGRRate")
+                except:
+                    index9 = -1
+                    try:
+                        VGR_fix = df3.loc[df3["Name"]=="VGRRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index11 = Sname_4cls.index("VGRH2OPassRate")
+                except:
+                    index11 = -1
+                    try:
+                        H2OCap_fix = 1-df3.loc[df3["Name"]=="VGRH2OPassRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index12 = Sname_4cls.index("VGRCO2CaptureRate")
+                except:
+                    index12 = -1
+                    try:
+                        CO2Cap_fix = df3.loc[df3["Name"]=="VGRCO2CaptureRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index13 = Sname_4cls.index("VGRH2PassRate")
+                except:
+                    index13 = -1
+                    try:
+                        H2Cap_fix = 1-df3.loc[df3["Name"]=="VGRH2PassRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index14 = Sname_4cls.index("VGRCOConvertRate")
+                except:
+                    index14 = -1
+                    try:
+                        WGS_fix = df3.loc[df3["Name"]=="VGRCOConvertRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                    
+            # find value of preprocessor inputs
+            for i in range(S_4cls_ROM_vali_cls_train_nrm.shape[0]):
+                if index1 == -1:
+                    J = J_fix
+                else:
+                    J = S_4cls_ROM_vali_cls_train[i,index1]/10.0 # mA/cm2
+                if index2 == -1:
+                    FU = FU_fix
+                else:
+                    FU = S_4cls_ROM_vali_cls_train[i,index2]
+                if index3 == -1:
+                    AU = AU_fix
+                else:
+                    AU = S_4cls_ROM_vali_cls_train[i,index3]
+                if index4 == -1:
+                    OCR = OCR_fix
+                else:
+                    OCR = S_4cls_ROM_vali_cls_train[i,index4]
+                if index5 == -1:
+                    IR = IR_fix
+                else:
+                    IR = S_4cls_ROM_vali_cls_train[i,index5]
+                if index6 == -1:
+                    Arec = Arec_fix
+                else:
+                    Arec = S_4cls_ROM_vali_cls_train[i,index6]
+                if index7 == -1:
+                    PreReform = PreReform_fix
+                else:
+                    PreReform = S_4cls_ROM_vali_cls_train[i,index7]
+                if index8 == -1:
+                    cellsize = cellsize_fix # cm2
+                else:
+                    cellsize = S_4cls_ROM_vali_cls_train[i,index8]
+                    
+                if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                    if index9 == -1:
+                        VGR = VGR_fix
+                    else:
+                        VGR = S_4cls_ROM_vali_cls_train[i,index9]
+                    if index11 == -1:
+                        H2OCap = H2OCap_fix
+                    else:
+                        H2OCap = 1-S_4cls_ROM_vali_cls_train[i,index11]
+                    if index12 == -1:
+                        CO2Cap = CO2Cap_fix
+                    else:
+                        CO2Cap = S_4cls_ROM_vali_cls_train[i,index12]
+                    if index13 == -1:
+                        H2Cap = H2Cap_fix
+                    else:
+                        H2Cap = 1-S_4cls_ROM_vali_cls_train[i,index13]
+                    if index14 == -1:
+                        WGS = WGS_fix
+                    else:
+                        WGS = S_4cls_ROM_vali_cls_train[i,index14]
+
+                if i%1000 == 0: print(i," cls_training")
+                if preprocessor_name == None or preprocessor_name == 'NGFC_ccs':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'NGFC_nocc':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_nocc(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'IGFC_ccs': # IGFC: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize,igfc)
+                elif preprocessor_name == 'NGFC_ccs_vgr': # NGFC CCS VGR
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize)
+                elif preprocessor_name == 'IGFC_ccs_vgr': # IGFC VGR: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize,igfc)
+                else:
+                    sys.exit('Code terminated: the selected "preprocessor" cannot be found')
+                succs_cls_training[i,0] = succ
+            mean_succs = succs_cls_training.mean(axis=0)
+            std_succs = succs_cls_training.std(axis=0)
+            succs_cls_training_nrm = (succs_cls_training-mean_succs)/std_succs
+
+            for i in range(S_4cls_vali_nrm.shape[0]):
+                if index1 == -1:
+                    J = J_fix
+                else:
+                    J = S_4cls_vali[i,index1]/10.0 # mA/cm2
+                if index2 == -1:
+                    FU = FU_fix
+                else:
+                    FU = S_4cls_vali[i,index2]
+                if index3 == -1:
+                    AU = AU_fix
+                else:
+                    AU = S_4cls_vali[i,index3]
+                if index4 == -1:
+                    OCR = OCR_fix
+                else:
+                    OCR = S_4cls_vali[i,index4]
+                if index5 == -1:
+                    IR = IR_fix
+                else:
+                    IR = S_4cls_vali[i,index5]
+                if index6 == -1:
+                    Arec = Arec_fix
+                else:
+                    Arec = S_4cls_vali[i,index6]
+                if index7 == -1:
+                    PreReform = PreReform_fix
+                else:
+                    PreReform = S_4cls_vali[i,index7]
+                if index8 == -1:
+                    cellsize = cellsize_fix # cm2
+                else:
+                    cellsize = S_4cls_vali[i,index8]
+                    
+                if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                    if index9 == -1:
+                        VGR = VGR_fix
+                    else:
+                        VGR = S_4cls_vali[i,index9]
+                    if index11 == -1:
+                        H2OCap = H2OCap_fix
+                    else:
+                        H2OCap = 1-S_4cls_vali[i,index11]
+                    if index12 == -1:
+                        CO2Cap = CO2Cap_fix
+                    else:
+                        CO2Cap = S_4cls_vali[i,index12]
+                    if index13 == -1:
+                        H2Cap = H2Cap_fix
+                    else:
+                        H2Cap = 1-S_4cls_vali[i,index13]
+                    if index14 == -1:
+                        WGS = WGS_fix
+                    else:
+                        WGS = S_4cls_vali[i,index14]
+
+                if i%1000 == 0: print(i," cls_testing")
+                if preprocessor_name == None or preprocessor_name == 'NGFC_ccs':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'NGFC_nocc':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_nocc(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'IGFC_ccs': # IGFC: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize,igfc)
+                elif preprocessor_name == 'NGFC_ccs_vgr': # NGFC CCS VGR
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize)
+                elif preprocessor_name == 'IGFC_ccs_vgr': # IGFC VGR: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize,igfc)
+                else:
+                    sys.exit('Code terminated: the selected "preprocessor" cannot be found')
+                succs_cls_testing[i,0] = succ
+            mean_succs=succs_cls_testing.mean(axis=0)
+            std_succs=succs_cls_testing.std(axis=0)
+            succs_cls_testing_nrm=(succs_cls_testing-mean_succs)/std_succs
+            
+            ## 1.8 prepare classification data
+            data_cls_training_y = Y_4cls_cls_train
+            data_cls_training_x = np.concatenate((S_4cls_ROM_vali_cls_train_nrm,Y_4cls_ROM_vali_cls_train_nrm_pred),axis=1)
+
+            data_cls_testing_x = np.concatenate((S_4cls_vali_nrm, Y_4cls_vali_nrm_pred),axis=1)
+            data_cls_testing_y = Y_4cls_vali
+
+            ## 1.9 perform classification with all inputs + all outputs + mbm decision
+            data_cls_training_x_with_mbm = np.concatenate((data_cls_training_x,succs_cls_training_nrm),axis=1)
+            data_cls_testing_x_with_mbm = np.concatenate((data_cls_testing_x,succs_cls_testing_nrm),axis=1)
+            maxiteration = 50000
+            acc_val_mbm,acc_test_mbm,test_prediction_mbm, cls_values = self.DNNCls(maxiteration, data_cls_training_x_with_mbm, data_cls_training_y, data_cls_testing_x_with_mbm, data_cls_testing_y, len(indS)+len(indY)+1)
+            
+            # ## 1.10 show classifier accuracy
+            print('Classifier accuracy with vali-data: ', acc_val_mbm)
+            print('Classifier accuracy with test-data: ', acc_test_mbm)
+            # print(test_prediction_mbm)
+            
+            ## 1.11 write classifier as text file
+            trainingoutput_file = self.outtrainingFile
+            trainingoutput_file_cls = trainingoutput_file.replace(".dat", "")+'_cls.dat'
+            trainingoutput_file_cls_ROM = trainingoutput_file.replace(".dat", "")+'_cls_ROM.dat'
+            
+            print('length of cls_values: ', len(cls_values))
+            # print(cls_values)
+            
+            w1,w2,b1,b2 = cls_values
+            with open(trainingoutput_file_cls, 'w') as f:
+                f.write('w1\n')
+                values_tmp = np.copy(w1)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w2\n')
+                values_tmp = np.copy(w2)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('b1\n')
+                values_tmp = np.copy(b1)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b2\n')
+                values_tmp = np.copy(b2)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('end\n')
+
+                # add contents of allResults.dat to outTraining_cls.dat
+                SY_row, SY_col = SYvalue.shape
+                f.write('\n')
+                for i in range(SY_col):
+                    f.write(SYname[i] + '\t')
+                f.write('\n')
+                for i in range(SY_row):
+                    for j in range(SY_col):
+                        f.write('{:11.4E}\t'.format(SYvalue[i, j]))
+                    f.write('\n')
+            
+            print('length of cls_ROM_values: ', len(cls_ROM_values))
+            # print(cls_ROM_values)
+            
+            w1,w2,w3,w4,w5,b1,b2,b3,b4,b5 = cls_ROM_values
+            with open(trainingoutput_file_cls_ROM, 'w') as f:
+                f.write('w1\n')
+                values_tmp = np.copy(w1)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w2\n')
+                values_tmp = np.copy(w2)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w3\n')
+                values_tmp = np.copy(w3)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w4\n')
+                values_tmp = np.copy(w4)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w5\n')
+                values_tmp = np.copy(w5)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('b1\n')
+                values_tmp = np.copy(b1)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b2\n')
+                values_tmp = np.copy(b2)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b3\n')
+                values_tmp = np.copy(b3)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b4\n')
+                values_tmp = np.copy(b4)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b5\n')
+                values_tmp = np.copy(b5)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('meanS\n')
+                values_tmp = np.copy(meanS)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('meanY\n')
+                values_tmp = np.copy(meanY)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('stdS\n')
+                values_tmp = np.copy(stdS)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('stdY\n')
+                values_tmp = np.copy(stdY)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('end\n')
+
+                # add contents of allResults.dat to outTraining_cls_ROM.dat
+                SY_row, SY_col = SYvalue.shape
+                f.write('\n')
+                for i in range(SY_col):
+                    f.write(SYname[i] + '\t')
+                f.write('\n')
+                for i in range(SY_row):
+                    for j in range(SY_col):
+                        f.write('{:11.4E}\t'.format(SYvalue[i, j]))
+                    f.write('\n')
+
+        ################## Step 2: train the ROM ##################
+        ## 2.1 determine indS, indY and determine if enabling ROM training
+        indS = list(range(1, S_col+1))
+        indY = []
+        Yname_4indY = ["Outlet_Fuel_Flowrate", "Outlet_Fuel_H2", 
+                       "Outlet_Fuel_H2O", "Outlet_Fuel_CO", 
+                       "Outlet_Fuel_CO2", "Outlet_Fuel_CH4", 
+                       "Outlet_Fuel_N2", "Outlet_Air_Flowrate", 
+                       "Outlet_Air_O2", "Outlet_Air_N2", 
+                       "Outlet_Air_H2O", "Outlet_Air_CO2", 
+                       "Outlet_Air_Ar", "FSI_Flowrate", "FSI_H2_MF", 
+                       "FSI_H2O_MF", "FSI_CO_MF", "FSI_CO2_MF", 
+                       "FSI_CH4_MF", "FSI_N2_MF"]
+        
+        ROM_enabled = False
+        for i in range(Y_col):
+            Yname_tmp = Yname[i]
+            if Yname_tmp in Yname_4indY:
+                indY.append(i+1)
+        if len(indY) == len(Yname_4indY):
+            ROM_enabled = True # if any element in Yname_4indY is missing, disable ROM training
+        else:
+            print('certain disired variable is missing')
+        
+        indS_index = [i-1 for i in indS]
+        indY_index = [i-1 for i in indY]
+        
+        ## 2.2- call preprocessor, prepare training data, train the ROM model, etc.
+        if ROM_enabled == True:
+            ## 2.2 prepare training data (simulation results)
+
+            # cls_enabled = True # to be deleted
+
+            if cls_enabled == True: # filter non-converged
+                SYvalue_cov = SYvalue[SYvalue[:, S_col] == 1, :]
+            else:
+                SYvalue_cov = SYvalue
+
+            # cls_enabled = False # to be deleted
+
+            if filter_enabled == True: # filter noise
+                SY_row_rm = []
+                for j in indY:
+                    tmp_data = SYvalue_cov[:, S_col+j-1]
+                    while(True):
+                        z = np.abs(stats.zscore(tmp_data, axis = 0))
+                        result = np.where(z > z_thres)
+                        index = list(result[0])
+                        # line removal list
+                        if len(index) == 0: break
+                        SY_row_rm += index
+                        SY_row_rm = list(dict.fromkeys(SY_row_rm))
+                        # replace outliers with mean
+                        tmp_data[SY_row_rm] = np.mean(tmp_data)
+                # remove rows and columns accroding to SY_row_rm and SY_col_rm
+                SYvalue_new = np.delete(SYvalue_cov, SY_row_rm, axis = 0)
+                print('Noise filter: trim ' + str(len(SY_row_rm)) + ' rows from a total of ' + str(len(SYvalue_cov)) + ' rows')
+            else:
+                SYvalue_new = SYvalue_cov
+
+            [S_row, Y_row, S_col, Y_col] = [len(SYvalue_new), len(SYvalue_new), int(infovalue[0,0]), int(infovalue[0,1])]
+            Svalue_new = copy.deepcopy(SYvalue_new[:, :S_col])
+            Yvalue_new = copy.deepcopy(SYvalue_new[:, S_col:])
+
+            # compute istep, numcrossvali, rndnumberlist
+            if frac4ROM >= 0:
+                numtraining = int(S_row*frac4ROM/100.0)
+                numcrossvali = S_row-numtraining
+                if numtraining < (2**len(indS)): 
+                    print('warning: "frac4ROM" is too low')
+                if numcrossvali > 0:
+                    istep = int((S_row)/numcrossvali)
+                    rndnumberlist =[]
+                    restlist = list(range(S_row))
+                    for i in range(1, numcrossvali+1):
+                        rndnumberlist.append(i*istep-1)
+                    restlist = [i for i in restlist if i not in rndnumberlist]
+                else:
+                    sys.exit('Code terminated: the fraction of training dataset cannot be 100%')
+            else:
+                numtraining = S_row-1000
+                numcrossvali = S_row-numtraining
+                rndnumberlist = list(range(numtraining, S_row))
+                restlist = list(range(numtraining))
+        
+            # split to training and validation data
+            Sname_4ROM = [ Sname[i] for i in indS_index]
+            Yname_4ROM = [ Yname[i] for i in indY_index]
+
+            temp = Svalue_new[restlist, :]
+            S_4ROM_train = temp[:, indS_index]
+            temp = Svalue_new[rndnumberlist, :]
+            S_4ROM_vali = temp[:, indS_index]
+            temp = Yvalue_new[restlist, :]
+            Y_4ROM_train = temp[:, indY_index]
+            temp = Yvalue_new[rndnumberlist, :]
+            Y_4ROM_vali = temp[:, indY_index]
+
+            ## 2.3 prepare training data ("preprocessor" results)
+            preprocessor_result_train = np.zeros((len(restlist),len(indY)),dtype=np.float64)
+            preprocessor_result_vali = np.zeros((len(rndnumberlist),len(indY)),dtype=np.float64)
+
+            # load inputbasefilename (base.dat or input000.dat)
+            if inputbasefilename != None:
+                text_file=open(inputbasefilename,"r")
+                lines = text_file.readlines()
+                df2 = pd.DataFrame(np.array([['1a', '1b', '1c']]),columns=['Name', 'Value', 'Updated'])
+                df3 = pd.DataFrame(columns=['Name', 'Value', 'Updated']) # currently, "Updated" feature not active
+                for j in range(len(lines)):
+                    str01 = lines[j].split('=')
+                    if len(str01) == 2:
+                        str01[0]=str01[0].rstrip()
+                        str01[0]=str01[0].lstrip()
+                        try:
+                            df2['Name']=str01[0]
+                            df2['Value']=float(str01[1])
+                            df2['Updated']=False
+                            df3=pd.concat([df3,df2],sort=False,ignore_index=True)
+                        except:
+                            pass
+            
+            # find index of preprocessor inputs
+            try: 
+                index1 = Sname_4ROM.index("Average_CurrentDensity")
+            except:
+                index1 = -1
+                try:
+                    J_fix = df3.loc[df3["Name"]=="Average_CurrentDensity","Value"].iloc[0]/10.0  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index2 = Sname_4ROM.index("Stack_Fuel_Utilization")
+            except:
+                index2 = -1
+                try:
+                    FU_fix = df3.loc[df3["Name"]=="Stack_Fuel_Utilization","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index3 = Sname_4ROM.index("Stack_Oxidant_Utilization")
+            except:
+                index3 = -1
+                try:
+                    AU_fix = df3.loc[df3["Name"]=="Stack_Oxidant_Utilization","Value"].iloc[0]/10.0  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index4 = Sname_4ROM.index("OxygenToCarbon_Ratio")
+            except:
+                index4 = -1
+                try:
+                    OCR_fix = df3.loc[df3["Name"]=="OxygenToCarbon_Ratio","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index5 = Sname_4ROM.index("Internal_Reforming")
+            except:
+                index5 = -1
+                try:
+                    IR_fix = df3.loc[df3["Name"]=="Internal_Reforming","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index6 = Sname_4ROM.index("Oxidant_Recirculation")
+            except:
+                index6 = -1
+                try:
+                    Arec_fix = df3.loc[df3["Name"]=="Oxidant_Recirculation","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index7= Sname_4ROM.index("PreReform")
+            except:
+                index7 = -1
+                try:
+                    PreReform_fix = df3.loc[df3["Name"]=="PreReform","Value"].iloc[0]  
+                except:
+                    # sys.exit('Code terminated: "preprocessor" input not defined')
+                    PreReform_fix=0.2 #[]
+            try: 
+                index8= Sname_4ROM.index("cellsize")
+            except:
+                index8 = -1
+                try:
+                    cellsize_fix = df3.loc[df3["Name"]=="cellsize","Value"].iloc[0]  
+                except:
+                    # sys.exit('Code terminated: "preprocessor" input not defined')
+                    cellsize_fix=550 #[cm2]
+                
+            if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                try: 
+                    index9 = Sname_4ROM.index("VGRRate")
+                except:
+                    index9 = -1
+                    try:
+                        VGR_fix = df3.loc[df3["Name"]=="VGRRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index11 = Sname_4ROM.index("VGRH2OPassRate")
+                except:
+                    index11 = -1
+                    try:
+                        H2OCap_fix = 1-df3.loc[df3["Name"]=="VGRH2OPassRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index12 = Sname_4ROM.index("VGRCO2CaptureRate")
+                except:
+                    index12 = -1
+                    try:
+                        CO2Cap_fix = df3.loc[df3["Name"]=="VGRCO2CaptureRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index13 = Sname_4ROM.index("VGRH2PassRate")
+                except:
+                    index13 = -1
+                    try:
+                        H2Cap_fix = 1-df3.loc[df3["Name"]=="VGRH2PassRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index14 = Sname_4ROM.index("VGRCOConvertRate")
+                except:
+                    index14 = -1
+                    try:
+                        WGS_fix = df3.loc[df3["Name"]=="VGRCOConvertRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+
+            # call preprocessor for trianing data
+            for i in range(S_4ROM_train.shape[0]):
+                if index1 == -1:
+                    J = J_fix
+                else:
+                    J = S_4ROM_train[i,index1]/10.0 # mA/cm2
+                if index2 == -1:
+                    FU = FU_fix
+                else:
+                    FU = S_4ROM_train[i,index2]
+                if index3 == -1:
+                    AU = AU_fix
+                else:
+                    AU = S_4ROM_train[i,index3]
+                if index4 == -1:
+                    OCR = OCR_fix
+                else:
+                    OCR = S_4ROM_train[i,index4]
+                if index5 == -1:
+                    IR = IR_fix
+                else:
+                    IR = S_4ROM_train[i,index5]
+                if index6 == -1:
+                    Arec = Arec_fix
+                else:
+                    Arec = S_4ROM_train[i,index6]
+                if index7 == -1:
+                    PreReform = PreReform_fix
+                else:
+                    PreReform = S_4ROM_train[i,index7]
+                if index8 == -1:
+                    cellsize = cellsize_fix # cm2
+                else:
+                    cellsize = S_4ROM_train[i,index8]
+                    
+                if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                    if index9 == -1:
+                        VGR = VGR_fix
+                    else:
+                        VGR = S_4ROM_train[i,index9]
+                    if index11 == -1:
+                        H2OCap = H2OCap_fix
+                    else:
+                        H2OCap = 1-S_4ROM_train[i,index11]
+                    if index12 == -1:
+                        CO2Cap = CO2Cap_fix
+                    else:
+                        CO2Cap = S_4ROM_train[i,index12]
+                    if index13 == -1:
+                        H2Cap = H2Cap_fix
+                    else:
+                        H2Cap = 1-S_4ROM_train[i,index13]
+                    if index14 == -1:
+                        WGS = WGS_fix
+                    else:
+                        WGS = S_4ROM_train[i,index14]
+                    
+                if preprocessor_name == None or preprocessor_name == 'NGFC_ccs':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'NGFC_nocc':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_nocc(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'IGFC_ccs': # IGFC: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize,igfc)
+                elif preprocessor_name == 'NGFC_ccs_vgr': # NGFC CCS VGR
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize)
+                elif preprocessor_name == 'IGFC_ccs_vgr': # IGFC VGR: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize,igfc)
+                else:
+                    sys.exit('Code terminated: the selected "preprocessor" cannot be found')
+
+                preprocessor_result_train[i,0] = np.sum(FuelOut)
+                preprocessor_result_train[i,1] = FuelOut[7]/np.sum(FuelOut)
+                preprocessor_result_train[i,2] = FuelOut[0]/np.sum(FuelOut)
+                preprocessor_result_train[i,3] = FuelOut[6]/np.sum(FuelOut)
+                preprocessor_result_train[i,4] = FuelOut[2]/np.sum(FuelOut)
+                preprocessor_result_train[i,5] = FuelOut[5]/np.sum(FuelOut)
+                preprocessor_result_train[i,6] = FuelOut[4]/np.sum(FuelOut)
+                preprocessor_result_train[i,7] = np.sum(AirOut)
+                preprocessor_result_train[i,8] = AirOut[3]/np.sum(AirOut)
+                preprocessor_result_train[i,9] = AirOut[4]/np.sum(AirOut)
+                preprocessor_result_train[i,10] = AirOut[0]/np.sum(AirOut)
+                preprocessor_result_train[i,11] = AirOut[2]/np.sum(AirOut)
+                preprocessor_result_train[i,12] = AirOut[1]/np.sum(AirOut)
+                preprocessor_result_train[i,13] = np.sum(FuelIn)
+                preprocessor_result_train[i,14] = FuelIn[7]/np.sum(FuelIn)
+                preprocessor_result_train[i,15] = FuelIn[0]/np.sum(FuelIn)
+                preprocessor_result_train[i,16] = FuelIn[6]/np.sum(FuelIn)
+                preprocessor_result_train[i,17] = FuelIn[2]/np.sum(FuelIn)
+                preprocessor_result_train[i,18] = FuelIn[5]/np.sum(FuelIn)
+                preprocessor_result_train[i,19] = FuelIn[4]/np.sum(FuelIn)
+                
+                # # plot preprocessor results vs simulation results
+                # tempy1 = Y_4ROM_train[i,:].flatten()
+                # tempy2 = preprocessor_result_train[i,:].flatten()
+                # tempx = list(range(1, len(indY)+1))
+
+                # fig, ax = plt.subplots(figsize=(8,6))
+                # ax.plot(tempx, tempy1, 'ro-', linewidth = 2, 
+                #         markersize = 12, label = 'Simulation')
+                # ax.plot(tempx, tempy2, 'bd--', linewidth = 2, 
+                #         markersize = 12, label = 'Preprocessor')
+                # plt.legend(loc='upper left')
+                # ax.set(title = 'Results comparison of case '+str(i))
+                # FigureName = self.work_path + '/Case ' + str(i) +'.png'
+                # plt.savefig(FigureName)
+                # plt.show()
+                
+            # call preprocessor for validation data
+            for i in range(S_4ROM_vali.shape[0]):
+                if index1 == -1:
+                    J = J_fix
+                else:
+                    J = S_4ROM_vali[i,index1]/10.0 # mA/cm2
+                if index2 == -1:
+                    FU = FU_fix
+                else:
+                    FU = S_4ROM_vali[i,index2]
+                if index3 == -1:
+                    AU = AU_fix
+                else:
+                    AU = S_4ROM_vali[i,index3]
+                if index4 == -1:
+                    OCR = OCR_fix
+                else:
+                    OCR = S_4ROM_vali[i,index4]
+                if index5 == -1:
+                    IR = IR_fix
+                else:
+                    IR = S_4ROM_vali[i,index5]
+                if index6 == -1:
+                    Arec = Arec_fix
+                else:
+                    Arec = S_4ROM_vali[i,index6]
+                if index7 == -1:
+                    PreReform = PreReform_fix
+                else:
+                    PreReform = S_4ROM_vali[i,index7]
+                if index8 == -1:
+                    cellsize = cellsize_fix # cm2
+                else:
+                    cellsize = S_4ROM_vali[i,index8]
+                    
+                if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                    if index9 == -1:
+                        VGR = VGR_fix
+                    else:
+                        VGR = S_4ROM_vali[i,index9]
+                    if index11 == -1:
+                        H2OCap = H2OCap_fix
+                    else:
+                        H2OCap = 1-S_4ROM_vali[i,index11]
+                    if index12 == -1:
+                        CO2Cap = CO2Cap_fix
+                    else:
+                        CO2Cap = S_4ROM_vali[i,index12]
+                    if index13 == -1:
+                        H2Cap = H2Cap_fix
+                    else:
+                        H2Cap = 1-S_4ROM_vali[i,index13]
+                    if index14 == -1:
+                        WGS = WGS_fix
+                    else:
+                        WGS = S_4ROM_vali[i,index14]
+
+                if preprocessor_name == None or preprocessor_name == 'NGFC_ccs':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'NGFC_nocc':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_nocc(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'IGFC_ccs': # IGFC: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize,igfc)
+                elif preprocessor_name == 'NGFC_ccs_vgr': # NGFC CCS VGR
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize)
+                elif preprocessor_name == 'IGFC_ccs_vgr': # IGFC VGR: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize,igfc)
+                else:
+                    sys.exit('Code terminated: the selected "preprocessor" cannot be found')
+
+                preprocessor_result_vali[i,0] = np.sum(FuelOut)
+                preprocessor_result_vali[i,1] = FuelOut[7]/np.sum(FuelOut)
+                preprocessor_result_vali[i,2] = FuelOut[0]/np.sum(FuelOut)
+                preprocessor_result_vali[i,3] = FuelOut[6]/np.sum(FuelOut)
+                preprocessor_result_vali[i,4] = FuelOut[2]/np.sum(FuelOut)
+                preprocessor_result_vali[i,5] = FuelOut[5]/np.sum(FuelOut)
+                preprocessor_result_vali[i,6] = FuelOut[4]/np.sum(FuelOut)
+                preprocessor_result_vali[i,7] = np.sum(AirOut)
+                preprocessor_result_vali[i,8] = AirOut[3]/np.sum(AirOut)
+                preprocessor_result_vali[i,9] = AirOut[4]/np.sum(AirOut)
+                preprocessor_result_vali[i,10] = AirOut[0]/np.sum(AirOut)
+                preprocessor_result_vali[i,11] = AirOut[2]/np.sum(AirOut)
+                preprocessor_result_vali[i,12] = AirOut[1]/np.sum(AirOut)
+                preprocessor_result_vali[i,13] = np.sum(FuelIn)
+                preprocessor_result_vali[i,14] = FuelIn[7]/np.sum(FuelIn)
+                preprocessor_result_vali[i,15] = FuelIn[0]/np.sum(FuelIn)
+                preprocessor_result_vali[i,16] = FuelIn[6]/np.sum(FuelIn)
+                preprocessor_result_vali[i,17] = FuelIn[2]/np.sum(FuelIn)
+                preprocessor_result_vali[i,18] = FuelIn[5]/np.sum(FuelIn)
+                preprocessor_result_vali[i,19] = FuelIn[4]/np.sum(FuelIn)
+
+            ## 2.4 prepare training data (differences betweeen simulation and preprocessor results)
+            err_4ROM_train = preprocessor_result_train - Y_4ROM_train
+            err_4ROM_vali = preprocessor_result_vali - Y_4ROM_vali
+
+            meanS=S_4ROM_train.mean(axis=0)
+            stdS=S_4ROM_train.std(axis=0)
+            meanY=Y_4ROM_train.mean(axis=0)
+            stdY=Y_4ROM_train.std(axis=0)
+            meanerr=err_4ROM_train.mean(axis=0)
+            stderr=err_4ROM_train.std(axis=0)
+
+            S_4ROM_train_nrm=(S_4ROM_train-meanS)/stdS
+            S_4ROM_vali_nrm=(S_4ROM_vali-meanS)/stdS
+            Y_4ROM_train_nrm=(Y_4ROM_train-meanY)/stdY
+            err_4ROM_train_nrm=(err_4ROM_train-meanerr)/stderr
+
+            ## 2.4 write to info.dat, intraining.dat, info.dat and inCrossVali.dat 
+            with open(self.infoFile, 'w') as f:
+                f.write('input_col\toutput_col\n')
+                f.write(str(len(indS))+'\t'+str(len(indY))+'\n')
+            f1 = open(self.intrainingFile, 'w')
+            f3 = open(self.incrossvaliFile, 'w')
+            for i in range(len(indS)):
+                f1.write(Sname_4ROM[i] + '\t')
+                f3.write(Sname_4ROM[i] + '\t')
+            for i in range(len(indY)):
+                f1.write(Yname_4ROM[i] + '\t')
+                f3.write(Yname_4ROM[i] + '\t')
+            f1.write('\n')
+            f3.write('\n')
+            for i in range(len(restlist)):
+                for j in range(len(indS)):
+                    f1.write('{:11.4E}\t'.format(S_4ROM_train[i, j]))
+                for j in range(len(indY)):
+                    f1.write('{:11.4E}\t'.format(Y_4ROM_train[i, j]))
+                f1.write('\n')
+            for i in range(len(rndnumberlist)):
+                for j in range(len(indS)):
+                    f3.write('{:11.4E}\t'.format(S_4ROM_vali[i, j]))
+                for j in range(len(indY)):
+                    f3.write('{:11.4E}\t'.format(Y_4ROM_vali[i, j]))
+                f3.write('\n')
+            f1.close()
+            f3.close()
+
+            # # write simulation results and "preprocessor" results
+            # traininginput_file = self.intrainingFile
+            # traininginput_file_simu = traininginput_file.replace(".dat", "")+'_simu.dat'
+            # traininginput_file_wrap = traininginput_file.replace(".dat", "")+'_wrap.dat'
+
+            # f1 = open(traininginput_file_simu, 'w')
+            # f3 = open(traininginput_file_wrap, 'w')
+            # for i in range(len(indS)):
+            #     f1.write(Sname_4ROM[i] + '\t')
+            #     f3.write(Sname_4ROM[i] + '\t')
+            # for i in range(len(indY)):
+            #     f1.write(Yname_4ROM[i] + '\t')
+            #     f3.write(Yname_4ROM[i] + '\t')
+            # f1.write('\n')
+            # f3.write('\n')
+            # for i in range(len(restlist)):
+            #     for j in range(len(indS)):
+            #         f1.write('{:11.4E}\t'.format(S_4ROM_train[i, j]))
+            #         f3.write('{:11.4E}\t'.format(S_4ROM_train[i, j]))
+            #     for j in range(len(indY)):
+            #         f1.write('{:11.4E}\t'.format(Y_4ROM_train[i, j]))
+            #         f3.write('{:11.4E}\t'.format(preprocessor_result_train[i, j]))
+            #     f1.write('\n')
+            #     f3.write('\n')
+            # f1.close()
+            # f3.close()
+
+            ## 2.5 perform training and prediction
+            maxiteration = 50000
+            DNNsize = [32, 200, 200, 256]
+            err_4ROM_vali_nrm_pre, ROM_values = self.DNNROM(maxiteration, S_4ROM_train_nrm, err_4ROM_train_nrm, S_4ROM_vali_nrm, len(indS), len(indY), DNNsize)
+
+            ## 2.6 save built ROM model
+            print('length of ROM_values: ', len(ROM_values))
+            # print(ROM_values)
+            
+            w1,w2,w3,w4,w5,b1,b2,b3,b4,b5 = ROM_values
+            with open(self.outtrainingFile, 'w') as f:
+                f.write('w1\n')
+                values_tmp = np.copy(w1)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w2\n')
+                values_tmp = np.copy(w2)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w3\n')
+                values_tmp = np.copy(w3)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w4\n')
+                values_tmp = np.copy(w4)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w5\n')
+                values_tmp = np.copy(w5)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('b1\n')
+                values_tmp = np.copy(b1)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b2\n')
+                values_tmp = np.copy(b2)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b3\n')
+                values_tmp = np.copy(b3)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b4\n')
+                values_tmp = np.copy(b4)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b5\n')
+                values_tmp = np.copy(b5)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('meanS\n')
+                values_tmp = np.copy(meanS)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('meanY\n')
+                values_tmp = np.copy(meanY)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('stdS\n')
+                values_tmp = np.copy(stdS)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('stdY\n')
+                values_tmp = np.copy(stdY)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('meanerr\n')
+                values_tmp = np.copy(meanerr)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('stderr\n')
+                values_tmp = np.copy(stderr)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('end\n')
+
+                # add contents of info.dat, inTraining.dat to outTraining.dat
+                f.write('\n')
+                f.write('input_output_col\n')
+                f.write(str(len(indS))+'\t'+str(len(indY))+'\n')
+
+                f.write('\n')
+                for i in indS:
+                    f.write(Sname[i-1] + '\t')
+                for i in indY:
+                    f.write(Yname[i-1] + '\t')
+                f.write('\n')
+                for i in range(S_row):
+                    for j in indS:
+                        f.write('{:11.4E}\t'.format(Svalue_new[i, j-1]))
+                    for j in indY:
+                        f.write('{:11.4E}\t'.format(Yvalue_new[i, j-1]))
+                    f.write('\n')
+
+            ## 2.7 write to ourCrossVali.dat
+            err_4ROM_vali_pre = err_4ROM_vali_nrm_pre*stderr+meanerr
+            Y_4ROM_vali_pre = preprocessor_result_vali-err_4ROM_vali_pre
+            f0 = open(self.outcrossvaliFile, 'w')
+            for i in range(len(indY)):
+                name = Yname_4ROM[i]
+                f0.write(name + '\t')
+            f0.write('\n')
+            for i in range(len(rndnumberlist)):
+                for j in range(len(indY)):
+                    f0.write('{:11.4E}\t'.format(Y_4ROM_vali_pre[i,j]-Y_4ROM_vali[i, j]))
+                f0.write('\n')
+            f0.close()
+
+            ## 2.8 update global variables
+            [self.S_row, self.Y_row, self.S_col, self.Y_col] = [len(restlist), len(restlist), len(indS), len(indY)]
+            self.S_norm = S_4ROM_train_nrm
+            self.Y_norm = Y_4ROM_train_nrm
+            self.S = S_4ROM_train
+            self.Y = Y_4ROM_train
+            [self.stdS, self.stdY, self.meanS, self.meanY] = [stdS, stdY, meanS, meanY]
+            self.Sname = Sname_4ROM
+            self.Yname = Yname_4ROM
+        
+        ################## Step 3: write accuracy ##################
+        int_95 = self.percent2intervl(95) # 95% confidence interval
+        trainingoutput_file = self.outtrainingFile
+        trainingoutput_accuracy = trainingoutput_file.replace(".dat", "")+'_acc.dat'
+        with open(trainingoutput_accuracy, 'w') as f:
+            if cls_enabled == True:
+                f.write('Classifier Accuracy: \n')
+                f.write(str(acc_test_mbm) + '\n')
+            if ROM_enabled == True:
+                f.write('ROM Accuracy (95% confidence interval): \n')
+                for i in range(len(Yname_4ROM)):
+                    f.write(Yname_4ROM[i])
+                    f.write('\t' + str(int_95[i]) + '\n')
+                
+        print('End of code\n')
+    
+    # alternative ROM training function
+    def buildROM_with_mbm(self, frac4ROM = 80, preprocessor_name = None, igfc = None,
+                 filter_enabled = True, z_thres = 5, inputbasefilename = None):
+        '''
+        The function build the ROM for certain input/output variables
+        '''
+        print('############################################################\
+              \nBuild the ROM\
+              \n############################################################')
+        
+        if not os.path.exists(self.allresultsFile) or not os.path.exists(self.allresults_infoFile):
+            sys.exit('Code terminated: essential files missing')
+        
+        ################## Step 1: train the classifier ##################
+        SYname, SYvalue = self.file_read(self.allresultsFile)
+        infoname, infovalue = self.file_read(self.allresults_infoFile)
+        [S_row, Y_row, S_col, Y_col] = [len(SYvalue), len(SYvalue), int(infovalue[0,0]), int(infovalue[0,1])]
+        Sname = copy.deepcopy(SYname[:S_col])
+        Yname = copy.deepcopy(SYname[S_col:])
+        Svalue = copy.deepcopy(SYvalue[:, :S_col])
+        Yvalue = copy.deepcopy(SYvalue[:, S_col:])
+        
+        ## 1.1 determine indS, indY
+        indS = list(range(1, S_col+1))
+        indY = []
+        for i in range(Y_col):
+            Y_tmp = Yvalue[:, i]
+            if len(np.unique(Y_tmp))>5:
+                indY.append(i+1)
+        
+        indS_index = [i-1 for i in indS]
+        indY_index = [i-1 for i in indY]
+        
+        ## 1.2 determine if enabling classifier or not
+        if Yname[0] == 'SimulationStatus':
+            cls_enabled = True
+        else:
+            cls_enabled = False
+
+        ## 1.3-- call "preprocessor", train classifier, etc.
+
+        # cls_enabled = False # to be deleted
+
+        if cls_enabled == True:
+            ## 1.3 split dataset into 3 sets
+            if frac4ROM >= 0:
+                size_tmp1 = int(S_row*frac4ROM/100.0)
+                size_tmp2 = int(size_tmp1*50.0/100.0)
+                size_tmp3 = int(S_row*(1-frac4ROM/100.0))
+            else:
+                size_tmp1 = int(S_row*0.8)
+                size_tmp2 = int(size_tmp1*50.0/100.0)
+                size_tmp3 = int(S_row*0.2)
+            
+            ## 1.4 change all SimulationStatus = -1 to 0
+            for i in range(S_row):
+                if Yvalue[i, 0] == -1: Yvalue[i, 0] = 0
+                    
+            Sname_4cls = [ Sname[i] for i in indS_index]
+            Yname_4cls = [ Yname[i] for i in indY_index]
+            
+            S_4cls_ROM_train_tmp = Svalue[:size_tmp2, :]
+            Y_4cls_ROM_train_tmp = Yvalue[:size_tmp2, :]
+            S_4cls_ROM_train_tmp = S_4cls_ROM_train_tmp[Y_4cls_ROM_train_tmp[:, 0] == 1, :]
+            Y_4cls_ROM_train_tmp = Y_4cls_ROM_train_tmp[Y_4cls_ROM_train_tmp[:, 0] == 1, :]
+            S_4cls_ROM_train = S_4cls_ROM_train_tmp[:, indS_index]
+            Y_4cls_ROM_train = Y_4cls_ROM_train_tmp[:, indY_index]
+            
+            S_4cls_ROM_vali_tmp = Svalue[size_tmp2:size_tmp1, :]
+            Y_4cls_ROM_vali_tmp = Yvalue[size_tmp2:size_tmp1, :]
+            S_4cls_ROM_vali_cls_train = S_4cls_ROM_vali_tmp[:, indS_index]
+            Y_4cls_ROM_vali = Y_4cls_ROM_vali_tmp[:, indY_index]
+            Y_4cls_cls_train = Y_4cls_ROM_vali_tmp[:, 0]
+            
+            S_4cls_vali = Svalue[S_row-size_tmp3:, indS_index]
+            Y_4cls_vali = Yvalue[S_row-size_tmp3:, 0]
+
+            ## 1.5 normalize dataset
+            meanS=S_4cls_ROM_train.mean(axis=0)
+            stdS=S_4cls_ROM_train.std(axis=0)
+
+            meanY=Y_4cls_ROM_train.mean(axis=0)
+            stdY=Y_4cls_ROM_train.std(axis=0)
+
+            S_4cls_ROM_train_nrm=(S_4cls_ROM_train-meanS)/stdS
+            Y_4cls_ROM_train_nrm=(Y_4cls_ROM_train-meanY)/stdY
+            S_4cls_ROM_vali_cls_train_nrm=(S_4cls_ROM_vali_cls_train-meanS)/stdS
+            S_4cls_vali_nrm=(S_4cls_vali-meanS)/stdS  
+            
+            ## 1.6 call DNN rom
+            maxiteration = 50000
+            DNNsize = [64, 200, 200, 256]
+            Y_4cls_ROM_vali_cls_train_nrm_pred, Y_4cls_vali_nrm_pred, cls_ROM_values = self.DNNROM_4cls(maxiteration, S_4cls_ROM_train_nrm, Y_4cls_ROM_train_nrm, S_4cls_ROM_vali_cls_train_nrm, S_4cls_vali_nrm, len(indS), len(indY), DNNsize)
 
             ## 1.7 call preprocessor
             succs_cls_training = np.zeros((S_4cls_ROM_vali_cls_train_nrm.shape[0],1),dtype=np.float64)
@@ -14681,10 +17492,16 @@ class PhyDNN():
         ## 2.2- call preprocessor, prepare training data, train the ROM model, etc.
         if ROM_enabled == True:
             ## 2.2 prepare training data (simulation results)
+
+            # cls_enabled = True # to be deleted
+
             if cls_enabled == True: # filter non-converged
                 SYvalue_cov = SYvalue[SYvalue[:, S_col] == 1, :]
             else:
                 SYvalue_cov = SYvalue
+
+            # cls_enabled = False # to be deleted
+
             if filter_enabled == True: # filter noise
                 SY_row_rm = []
                 for j in indY:
@@ -14966,7 +17783,7 @@ class PhyDNN():
                 preprocessor_result_train[i,17] = FuelIn[2]/np.sum(FuelIn)
                 preprocessor_result_train[i,18] = FuelIn[5]/np.sum(FuelIn)
                 preprocessor_result_train[i,19] = FuelIn[4]/np.sum(FuelIn)
-                
+
                 # # plot preprocessor results vs simulation results
                 # tempy1 = Y_4ROM_train[i,:].flatten()
                 # tempy2 = preprocessor_result_train[i,:].flatten()
@@ -15090,6 +17907,16 @@ class PhyDNN():
             Y_4ROM_train_nrm=(Y_4ROM_train-meanY)/stdY
             err_4ROM_train_nrm=(err_4ROM_train-meanerr)/stderr
 
+            ## 2.4.1 concatenate preprocessor results with SOFC-MP inputs as ROM inputs
+            preprocessor_result_train_trim = np.delete(preprocessor_result_train, 5, 1)
+            preprocessor_result_vali_trim = np.delete(preprocessor_result_vali, 5, 1)
+            S_4ROM_train_with_mbm = np.concatenate((S_4ROM_train, preprocessor_result_train_trim),axis=1)
+            S_4ROM_vali_with_mbm = np.concatenate((S_4ROM_vali, preprocessor_result_vali_trim),axis=1)
+            meanS_with_mbm = S_4ROM_train_with_mbm.mean(axis=0)
+            stdS_with_mbm = S_4ROM_train_with_mbm.std(axis=0)
+            S_4ROM_train_with_mbm_nrm = (S_4ROM_train_with_mbm-meanS_with_mbm)/stdS_with_mbm
+            S_4ROM_vali_with_mbm_nrm = (S_4ROM_vali_with_mbm-meanS_with_mbm)/stdS_with_mbm
+
             ## 2.4 write to info.dat, intraining.dat, info.dat and inCrossVali.dat 
             with open(self.infoFile, 'w') as f:
                 f.write('input_col\toutput_col\n')
@@ -15149,7 +17976,7 @@ class PhyDNN():
             ## 2.5 perform training and prediction
             maxiteration = 50000
             DNNsize = [32, 200, 200, 256]
-            err_4ROM_vali_nrm_pre, ROM_values = self.DNNROM(maxiteration, S_4ROM_train_nrm, err_4ROM_train_nrm, S_4ROM_vali_nrm, len(indS), len(indY), DNNsize)
+            err_4ROM_vali_nrm_pre, ROM_values = self.DNNROM(maxiteration, S_4ROM_train_with_mbm_nrm, err_4ROM_train_nrm, S_4ROM_vali_with_mbm_nrm, len(indS)+19, len(indY), DNNsize)
 
             ## 2.6 save built ROM model
             print('length of ROM_values: ', len(ROM_values))
@@ -15264,9 +18091,1247 @@ class PhyDNN():
                 f.write('\n')
                 f.write('end\n')
 
+                # add contents of info.dat, inTraining.dat to outTraining.dat
+                f.write('\n')
+                f.write('input_output_col\n')
+                f.write(str(len(indS))+'\t'+str(len(indY))+'\n')
+
+                f.write('\n')
+                for i in indS:
+                    f.write(Sname[i-1] + '\t')
+                for i in indY:
+                    f.write(Yname[i-1] + '\t')
+                f.write('\n')
+                for i in range(S_row):
+                    for j in indS:
+                        f.write('{:11.4E}\t'.format(Svalue_new[i, j-1]))
+                    for j in indY:
+                        f.write('{:11.4E}\t'.format(Yvalue_new[i, j-1]))
+                    f.write('\n')
+
             ## 2.7 write to ourCrossVali.dat
             err_4ROM_vali_pre = err_4ROM_vali_nrm_pre*stderr+meanerr
             Y_4ROM_vali_pre = preprocessor_result_vali-err_4ROM_vali_pre
+            f0 = open(self.outcrossvaliFile, 'w')
+            for i in range(len(indY)):
+                name = Yname_4ROM[i]
+                f0.write(name + '\t')
+            f0.write('\n')
+            for i in range(len(rndnumberlist)):
+                for j in range(len(indY)):
+                    f0.write('{:11.4E}\t'.format(Y_4ROM_vali_pre[i,j]-Y_4ROM_vali[i, j]))
+                f0.write('\n')
+            f0.close()
+
+            ## 2.8 update global variables
+            [self.S_row, self.Y_row, self.S_col, self.Y_col] = [len(restlist), len(restlist), len(indS), len(indY)]
+            self.S_norm = S_4ROM_train_nrm
+            self.Y_norm = Y_4ROM_train_nrm
+            self.S = S_4ROM_train
+            self.Y = Y_4ROM_train
+            [self.stdS, self.stdY, self.meanS, self.meanY] = [stdS, stdY, meanS, meanY]
+            self.Sname = Sname_4ROM
+            self.Yname = Yname_4ROM
+        
+        ################## Step 3: write accuracy ##################
+        int_95 = self.percent2intervl(95) # 95% confidence interval
+        trainingoutput_file = self.outtrainingFile
+        trainingoutput_accuracy = trainingoutput_file.replace(".dat", "")+'_acc.dat'
+        with open(trainingoutput_accuracy, 'w') as f:
+            if cls_enabled == True:
+                f.write('Classifier Accuracy: \n')
+                f.write(str(acc_test_mbm) + '\n')
+            if ROM_enabled == True:
+                f.write('ROM Accuracy (95% confidence interval): \n')
+                for i in range(len(Yname_4ROM)):
+                    f.write(Yname_4ROM[i])
+                    f.write('\t' + str(int_95[i]) + '\n')
+                
+        print('End of code\n')
+    
+    # alternative ROM training function
+    def buildROM_with_mbm_orig(self, frac4ROM = 80, preprocessor_name = None, igfc = None,
+                 filter_enabled = True, z_thres = 5, inputbasefilename = None):
+        '''
+        The function build the ROM for certain input/output variables
+        '''
+        print('############################################################\
+              \nBuild the ROM\
+              \n############################################################')
+        
+        if not os.path.exists(self.allresultsFile) or not os.path.exists(self.allresults_infoFile):
+            sys.exit('Code terminated: essential files missing')
+        
+        ################## Step 1: train the classifier ##################
+        SYname, SYvalue = self.file_read(self.allresultsFile)
+        infoname, infovalue = self.file_read(self.allresults_infoFile)
+        [S_row, Y_row, S_col, Y_col] = [len(SYvalue), len(SYvalue), int(infovalue[0,0]), int(infovalue[0,1])]
+        Sname = copy.deepcopy(SYname[:S_col])
+        Yname = copy.deepcopy(SYname[S_col:])
+        Svalue = copy.deepcopy(SYvalue[:, :S_col])
+        Yvalue = copy.deepcopy(SYvalue[:, S_col:])
+        
+        ## 1.1 determine indS, indY
+        indS = list(range(1, S_col+1))
+        indY = []
+        for i in range(Y_col):
+            Y_tmp = Yvalue[:, i]
+            if len(np.unique(Y_tmp))>5:
+                indY.append(i+1)
+        
+        indS_index = [i-1 for i in indS]
+        indY_index = [i-1 for i in indY]
+        
+        ## 1.2 determine if enabling classifier or not
+        if Yname[0] == 'SimulationStatus':
+            cls_enabled = True
+        else:
+            cls_enabled = False
+
+        ## 1.3-- call "preprocessor", train classifier, etc.
+        
+        # cls_enabled = False # to be deleted
+        
+        if cls_enabled == True:
+            ## 1.3 split dataset into 3 sets
+            if frac4ROM >= 0:
+                size_tmp1 = int(S_row*frac4ROM/100.0)
+                size_tmp2 = int(size_tmp1*50.0/100.0)
+                size_tmp3 = int(S_row*(1-frac4ROM/100.0))
+            else:
+                size_tmp1 = int(S_row*0.8)
+                size_tmp2 = int(size_tmp1*50.0/100.0)
+                size_tmp3 = int(S_row*0.2)
+            
+            ## 1.4 change all SimulationStatus = -1 to 0
+            for i in range(S_row):
+                if Yvalue[i, 0] == -1: Yvalue[i, 0] = 0
+                    
+            Sname_4cls = [ Sname[i] for i in indS_index]
+            Yname_4cls = [ Yname[i] for i in indY_index]
+            
+            S_4cls_ROM_train_tmp = Svalue[:size_tmp2, :]
+            Y_4cls_ROM_train_tmp = Yvalue[:size_tmp2, :]
+            S_4cls_ROM_train_tmp = S_4cls_ROM_train_tmp[Y_4cls_ROM_train_tmp[:, 0] == 1, :]
+            Y_4cls_ROM_train_tmp = Y_4cls_ROM_train_tmp[Y_4cls_ROM_train_tmp[:, 0] == 1, :]
+            S_4cls_ROM_train = S_4cls_ROM_train_tmp[:, indS_index]
+            Y_4cls_ROM_train = Y_4cls_ROM_train_tmp[:, indY_index]
+            
+            S_4cls_ROM_vali_tmp = Svalue[size_tmp2:size_tmp1, :]
+            Y_4cls_ROM_vali_tmp = Yvalue[size_tmp2:size_tmp1, :]
+            S_4cls_ROM_vali_cls_train = S_4cls_ROM_vali_tmp[:, indS_index]
+            Y_4cls_ROM_vali = Y_4cls_ROM_vali_tmp[:, indY_index]
+            Y_4cls_cls_train = Y_4cls_ROM_vali_tmp[:, 0]
+            
+            S_4cls_vali = Svalue[S_row-size_tmp3:, indS_index]
+            Y_4cls_vali = Yvalue[S_row-size_tmp3:, 0]
+
+            ## 1.5 normalize dataset
+            meanS=S_4cls_ROM_train.mean(axis=0)
+            stdS=S_4cls_ROM_train.std(axis=0)
+
+            meanY=Y_4cls_ROM_train.mean(axis=0)
+            stdY=Y_4cls_ROM_train.std(axis=0)
+
+            S_4cls_ROM_train_nrm=(S_4cls_ROM_train-meanS)/stdS
+            Y_4cls_ROM_train_nrm=(Y_4cls_ROM_train-meanY)/stdY
+            S_4cls_ROM_vali_cls_train_nrm=(S_4cls_ROM_vali_cls_train-meanS)/stdS
+            S_4cls_vali_nrm=(S_4cls_vali-meanS)/stdS  
+            
+            ## 1.6 call DNN rom
+            maxiteration = 50000
+            DNNsize = [64, 200, 200, 256]
+            Y_4cls_ROM_vali_cls_train_nrm_pred, Y_4cls_vali_nrm_pred, cls_ROM_values = self.DNNROM_4cls(maxiteration, S_4cls_ROM_train_nrm, Y_4cls_ROM_train_nrm, S_4cls_ROM_vali_cls_train_nrm, S_4cls_vali_nrm, len(indS), len(indY), DNNsize)
+
+            ## 1.7 call preprocessor
+            succs_cls_training = np.zeros((S_4cls_ROM_vali_cls_train_nrm.shape[0],1),dtype=np.float64)
+            succs_cls_testing = np.zeros((S_4cls_vali_nrm.shape[0],1),dtype=np.float64)
+            
+            # load inputbasefilename (base.dat or input000.dat)
+            if inputbasefilename != None:
+                text_file=open(inputbasefilename,"r")
+                lines = text_file.readlines()
+                df2 = pd.DataFrame(np.array([['1a', '1b', '1c']]),columns=['Name', 'Value', 'Updated'])
+                df3 = pd.DataFrame(columns=['Name', 'Value', 'Updated']) # currently, "Updated" feature not active
+                for j in range(len(lines)):
+                    str01 = lines[j].split('=')
+                    if len(str01) == 2:
+                        str01[0]=str01[0].rstrip()
+                        str01[0]=str01[0].lstrip()
+                        try:
+                            df2['Name']=str01[0]
+                            df2['Value']=float(str01[1])
+                            df2['Updated']=False
+                            df3=pd.concat([df3,df2],sort=False,ignore_index=True)
+                        except:
+                            pass
+
+            # find index of preprocessor inputs
+            try: 
+                index1 = Sname_4cls.index("Average_CurrentDensity")
+            except:
+                index1 = -1
+                try:
+                    J_fix = df3.loc[df3["Name"]=="Average_CurrentDensity","Value"].iloc[0]/10.0  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index2 = Sname_4cls.index("Stack_Fuel_Utilization")
+            except:
+                index2 = -1
+                try:
+                    FU_fix = df3.loc[df3["Name"]=="Stack_Fuel_Utilization","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index3 = Sname_4cls.index("Stack_Oxidant_Utilization")
+            except:
+                index3 = -1
+                try:
+                    AU_fix = df3.loc[df3["Name"]=="Stack_Oxidant_Utilization","Value"].iloc[0]/10.0  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index4 = Sname_4cls.index("OxygenToCarbon_Ratio")
+            except:
+                index4 = -1
+                try:
+                    OCR_fix = df3.loc[df3["Name"]=="OxygenToCarbon_Ratio","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index5 = Sname_4cls.index("Internal_Reforming")
+            except:
+                index5 = -1
+                try:
+                    IR_fix = df3.loc[df3["Name"]=="Internal_Reforming","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index6 = Sname_4cls.index("Oxidant_Recirculation")
+            except:
+                index6 = -1
+                try:
+                    Arec_fix = df3.loc[df3["Name"]=="Oxidant_Recirculation","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index7= Sname_4cls.index("PreReform")
+            except:
+                index7 = -1
+                try:
+                    PreReform_fix = df3.loc[df3["Name"]=="PreReform","Value"].iloc[0]  
+                except:
+                    # sys.exit('Code terminated: "preprocessor" input not defined')
+                    PreReform_fix=0.2 #[]
+            try: 
+                index8= Sname_4cls.index("cellsize")
+            except:
+                index8 = -1
+                try:
+                    cellsize_fix = df3.loc[df3["Name"]=="cellsize","Value"].iloc[0]  
+                except:
+                    # sys.exit('Code terminated: "preprocessor" input not defined')
+                    cellsize_fix=550 #[cm2]
+                
+            if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                try: 
+                    index9 = Sname_4cls.index("VGRRate")
+                except:
+                    index9 = -1
+                    try:
+                        VGR_fix = df3.loc[df3["Name"]=="VGRRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index11 = Sname_4cls.index("VGRH2OPassRate")
+                except:
+                    index11 = -1
+                    try:
+                        H2OCap_fix = 1-df3.loc[df3["Name"]=="VGRH2OPassRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index12 = Sname_4cls.index("VGRCO2CaptureRate")
+                except:
+                    index12 = -1
+                    try:
+                        CO2Cap_fix = df3.loc[df3["Name"]=="VGRCO2CaptureRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index13 = Sname_4cls.index("VGRH2PassRate")
+                except:
+                    index13 = -1
+                    try:
+                        H2Cap_fix = 1-df3.loc[df3["Name"]=="VGRH2PassRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index14 = Sname_4cls.index("VGRCOConvertRate")
+                except:
+                    index14 = -1
+                    try:
+                        WGS_fix = df3.loc[df3["Name"]=="VGRCOConvertRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                    
+            # find value of preprocessor inputs
+            for i in range(S_4cls_ROM_vali_cls_train_nrm.shape[0]):
+                if index1 == -1:
+                    J = J_fix
+                else:
+                    J = S_4cls_ROM_vali_cls_train[i,index1]/10.0 # mA/cm2
+                if index2 == -1:
+                    FU = FU_fix
+                else:
+                    FU = S_4cls_ROM_vali_cls_train[i,index2]
+                if index3 == -1:
+                    AU = AU_fix
+                else:
+                    AU = S_4cls_ROM_vali_cls_train[i,index3]
+                if index4 == -1:
+                    OCR = OCR_fix
+                else:
+                    OCR = S_4cls_ROM_vali_cls_train[i,index4]
+                if index5 == -1:
+                    IR = IR_fix
+                else:
+                    IR = S_4cls_ROM_vali_cls_train[i,index5]
+                if index6 == -1:
+                    Arec = Arec_fix
+                else:
+                    Arec = S_4cls_ROM_vali_cls_train[i,index6]
+                if index7 == -1:
+                    PreReform = PreReform_fix
+                else:
+                    PreReform = S_4cls_ROM_vali_cls_train[i,index7]
+                if index8 == -1:
+                    cellsize = cellsize_fix # cm2
+                else:
+                    cellsize = S_4cls_ROM_vali_cls_train[i,index8]
+                    
+                if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                    if index9 == -1:
+                        VGR = VGR_fix
+                    else:
+                        VGR = S_4cls_ROM_vali_cls_train[i,index9]
+                    if index11 == -1:
+                        H2OCap = H2OCap_fix
+                    else:
+                        H2OCap = 1-S_4cls_ROM_vali_cls_train[i,index11]
+                    if index12 == -1:
+                        CO2Cap = CO2Cap_fix
+                    else:
+                        CO2Cap = S_4cls_ROM_vali_cls_train[i,index12]
+                    if index13 == -1:
+                        H2Cap = H2Cap_fix
+                    else:
+                        H2Cap = 1-S_4cls_ROM_vali_cls_train[i,index13]
+                    if index14 == -1:
+                        WGS = WGS_fix
+                    else:
+                        WGS = S_4cls_ROM_vali_cls_train[i,index14]
+
+                if i%1000 == 0: print(i," cls_training")
+                if preprocessor_name == None or preprocessor_name == 'NGFC_ccs':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'NGFC_nocc':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_nocc(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'IGFC_ccs': # IGFC: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize,igfc)
+                elif preprocessor_name == 'NGFC_ccs_vgr': # NGFC CCS VGR
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize)
+                elif preprocessor_name == 'IGFC_ccs_vgr': # IGFC VGR: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize,igfc)
+                else:
+                    sys.exit('Code terminated: the selected "preprocessor" cannot be found')
+                succs_cls_training[i,0] = succ
+            mean_succs = succs_cls_training.mean(axis=0)
+            std_succs = succs_cls_training.std(axis=0)
+            succs_cls_training_nrm = (succs_cls_training-mean_succs)/std_succs
+
+            for i in range(S_4cls_vali_nrm.shape[0]):
+                if index1 == -1:
+                    J = J_fix
+                else:
+                    J = S_4cls_vali[i,index1]/10.0 # mA/cm2
+                if index2 == -1:
+                    FU = FU_fix
+                else:
+                    FU = S_4cls_vali[i,index2]
+                if index3 == -1:
+                    AU = AU_fix
+                else:
+                    AU = S_4cls_vali[i,index3]
+                if index4 == -1:
+                    OCR = OCR_fix
+                else:
+                    OCR = S_4cls_vali[i,index4]
+                if index5 == -1:
+                    IR = IR_fix
+                else:
+                    IR = S_4cls_vali[i,index5]
+                if index6 == -1:
+                    Arec = Arec_fix
+                else:
+                    Arec = S_4cls_vali[i,index6]
+                if index7 == -1:
+                    PreReform = PreReform_fix
+                else:
+                    PreReform = S_4cls_vali[i,index7]
+                if index8 == -1:
+                    cellsize = cellsize_fix # cm2
+                else:
+                    cellsize = S_4cls_vali[i,index8]
+                    
+                if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                    if index9 == -1:
+                        VGR = VGR_fix
+                    else:
+                        VGR = S_4cls_vali[i,index9]
+                    if index11 == -1:
+                        H2OCap = H2OCap_fix
+                    else:
+                        H2OCap = 1-S_4cls_vali[i,index11]
+                    if index12 == -1:
+                        CO2Cap = CO2Cap_fix
+                    else:
+                        CO2Cap = S_4cls_vali[i,index12]
+                    if index13 == -1:
+                        H2Cap = H2Cap_fix
+                    else:
+                        H2Cap = 1-S_4cls_vali[i,index13]
+                    if index14 == -1:
+                        WGS = WGS_fix
+                    else:
+                        WGS = S_4cls_vali[i,index14]
+
+                if i%1000 == 0: print(i," cls_testing")
+                if preprocessor_name == None or preprocessor_name == 'NGFC_ccs':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'NGFC_nocc':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_nocc(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'IGFC_ccs': # IGFC: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize,igfc)
+                elif preprocessor_name == 'NGFC_ccs_vgr': # NGFC CCS VGR
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize)
+                elif preprocessor_name == 'IGFC_ccs_vgr': # IGFC VGR: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize,igfc)
+                else:
+                    sys.exit('Code terminated: the selected "preprocessor" cannot be found')
+                succs_cls_testing[i,0] = succ
+            mean_succs=succs_cls_testing.mean(axis=0)
+            std_succs=succs_cls_testing.std(axis=0)
+            succs_cls_testing_nrm=(succs_cls_testing-mean_succs)/std_succs
+            
+            ## 1.8 prepare classification data
+            data_cls_training_y = Y_4cls_cls_train
+            data_cls_training_x = np.concatenate((S_4cls_ROM_vali_cls_train_nrm,Y_4cls_ROM_vali_cls_train_nrm_pred),axis=1)
+
+            data_cls_testing_x = np.concatenate((S_4cls_vali_nrm, Y_4cls_vali_nrm_pred),axis=1)
+            data_cls_testing_y = Y_4cls_vali
+
+            ## 1.9 perform classification with all inputs + all outputs + mbm decision
+            data_cls_training_x_with_mbm = np.concatenate((data_cls_training_x,succs_cls_training_nrm),axis=1)
+            data_cls_testing_x_with_mbm = np.concatenate((data_cls_testing_x,succs_cls_testing_nrm),axis=1)
+            maxiteration = 50000
+            acc_val_mbm,acc_test_mbm,test_prediction_mbm, cls_values = self.DNNCls(maxiteration, data_cls_training_x_with_mbm, data_cls_training_y, data_cls_testing_x_with_mbm, data_cls_testing_y, len(indS)+len(indY)+1)
+            
+            # ## 1.10 show classifier accuracy
+            print('Classifier accuracy with vali-data: ', acc_val_mbm)
+            print('Classifier accuracy with test-data: ', acc_test_mbm)
+            # print(test_prediction_mbm)
+            
+            ## 1.11 write classifier as text file
+            trainingoutput_file = self.outtrainingFile
+            trainingoutput_file_cls = trainingoutput_file.replace(".dat", "")+'_cls.dat'
+            trainingoutput_file_cls_ROM = trainingoutput_file.replace(".dat", "")+'_cls_ROM.dat'
+            
+            print('length of cls_values: ', len(cls_values))
+            
+            w1,w2,b1,b2 = cls_values
+            with open(trainingoutput_file_cls, 'w') as f:
+                f.write('w1\n')
+                values_tmp = np.copy(w1)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w2\n')
+                values_tmp = np.copy(w2)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('b1\n')
+                values_tmp = np.copy(b1)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b2\n')
+                values_tmp = np.copy(b2)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('end\n')
+            
+            print('length of cls_ROM_values: ', len(cls_ROM_values))
+            
+            w1,w2,w3,w4,w5,b1,b2,b3,b4,b5 = cls_ROM_values
+            with open(trainingoutput_file_cls_ROM, 'w') as f:
+                f.write('w1\n')
+                values_tmp = np.copy(w1)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w2\n')
+                values_tmp = np.copy(w2)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w3\n')
+                values_tmp = np.copy(w3)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w4\n')
+                values_tmp = np.copy(w4)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w5\n')
+                values_tmp = np.copy(w5)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('b1\n')
+                values_tmp = np.copy(b1)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b2\n')
+                values_tmp = np.copy(b2)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b3\n')
+                values_tmp = np.copy(b3)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b4\n')
+                values_tmp = np.copy(b4)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b5\n')
+                values_tmp = np.copy(b5)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('meanS\n')
+                values_tmp = np.copy(meanS)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('meanY\n')
+                values_tmp = np.copy(meanY)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('stdS\n')
+                values_tmp = np.copy(stdS)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('stdY\n')
+                values_tmp = np.copy(stdY)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('end\n')
+
+        ################## Step 2: train the ROM ##################
+        ## 2.1 determine indS, indY and determine if enabling ROM training
+        indS = list(range(1, S_col+1))
+        indY = []
+        Yname_4indY = ["Outlet_Fuel_Flowrate", "Outlet_Fuel_H2", 
+                       "Outlet_Fuel_H2O", "Outlet_Fuel_CO", 
+                       "Outlet_Fuel_CO2", "Outlet_Fuel_CH4", 
+                       "Outlet_Fuel_N2", "Outlet_Air_Flowrate", 
+                       "Outlet_Air_O2", "Outlet_Air_N2", 
+                       "Outlet_Air_H2O", "Outlet_Air_CO2", 
+                       "Outlet_Air_Ar", "FSI_Flowrate", "FSI_H2_MF", 
+                       "FSI_H2O_MF", "FSI_CO_MF", "FSI_CO2_MF", 
+                       "FSI_CH4_MF", "FSI_N2_MF"]
+        
+        ROM_enabled = False
+        for i in range(Y_col):
+            Yname_tmp = Yname[i]
+            if Yname_tmp in Yname_4indY:
+                indY.append(i+1)
+        if len(indY) == len(Yname_4indY):
+            ROM_enabled = True # if any element in Yname_4indY is missing, disable ROM training
+        else:
+            print('certain disired variable is missing')
+        
+        indS_index = [i-1 for i in indS]
+        indY_index = [i-1 for i in indY]
+        
+        ## 2.2- call preprocessor, prepare training data, train the ROM model, etc.
+        if ROM_enabled == True:
+            ## 2.2 prepare training data (simulation results)
+
+            # cls_enabled = True # to be deleted
+
+            if cls_enabled == True: # filter non-converged
+                SYvalue_cov = SYvalue[SYvalue[:, S_col] == 1, :]
+            else:
+                SYvalue_cov = SYvalue
+
+            # cls_enabled = False # to be deleted
+
+            if filter_enabled == True: # filter noise
+                SY_row_rm = []
+                for j in indY:
+                    tmp_data = SYvalue_cov[:, S_col+j-1]
+                    while(True):
+                        z = np.abs(stats.zscore(tmp_data, axis = 0))
+                        result = np.where(z > z_thres)
+                        index = list(result[0])
+                        # line removal list
+                        if len(index) == 0: break
+                        SY_row_rm += index
+                        SY_row_rm = list(dict.fromkeys(SY_row_rm))
+                        # replace outliers with mean
+                        tmp_data[SY_row_rm] = np.mean(tmp_data)
+                # remove rows and columns accroding to SY_row_rm and SY_col_rm
+                SYvalue_new = np.delete(SYvalue_cov, SY_row_rm, axis = 0)
+                print('Noise filter: trim ' + str(len(SY_row_rm)) + ' rows from a total of ' + str(len(SYvalue_cov)) + ' rows')
+            else:
+                SYvalue_new = SYvalue_cov
+
+            [S_row, Y_row, S_col, Y_col] = [len(SYvalue_new), len(SYvalue_new), int(infovalue[0,0]), int(infovalue[0,1])]
+            Svalue_new = copy.deepcopy(SYvalue_new[:, :S_col])
+            Yvalue_new = copy.deepcopy(SYvalue_new[:, S_col:])
+
+            # compute istep, numcrossvali, rndnumberlist
+            if frac4ROM >= 0:
+                numtraining = int(S_row*frac4ROM/100.0)
+                numcrossvali = S_row-numtraining
+                if numtraining < (2**len(indS)): 
+                    print('warning: "frac4ROM" is too low')
+                if numcrossvali > 0:
+                    istep = int((S_row)/numcrossvali)
+                    rndnumberlist =[]
+                    restlist = list(range(S_row))
+                    for i in range(1, numcrossvali+1):
+                        rndnumberlist.append(i*istep-1)
+                    restlist = [i for i in restlist if i not in rndnumberlist]
+                else:
+                    sys.exit('Code terminated: the fraction of training dataset cannot be 100%')
+            else:
+                numtraining = S_row-1000
+                numcrossvali = S_row-numtraining
+                rndnumberlist = list(range(numtraining, S_row))
+                restlist = list(range(numtraining))
+        
+            # split to training and validation data
+            Sname_4ROM = [ Sname[i] for i in indS_index]
+            Yname_4ROM = [ Yname[i] for i in indY_index]
+
+            temp = Svalue_new[restlist, :]
+            S_4ROM_train = temp[:, indS_index]
+            temp = Svalue_new[rndnumberlist, :]
+            S_4ROM_vali = temp[:, indS_index]
+            temp = Yvalue_new[restlist, :]
+            Y_4ROM_train = temp[:, indY_index]
+            temp = Yvalue_new[rndnumberlist, :]
+            Y_4ROM_vali = temp[:, indY_index]
+
+            ## 2.3 prepare training data ("preprocessor" results)
+            preprocessor_result_train = np.zeros((len(restlist),len(indY)),dtype=np.float64)
+            preprocessor_result_vali = np.zeros((len(rndnumberlist),len(indY)),dtype=np.float64)
+
+            # load inputbasefilename (base.dat or input000.dat)
+            if inputbasefilename != None:
+                text_file=open(inputbasefilename,"r")
+                lines = text_file.readlines()
+                df2 = pd.DataFrame(np.array([['1a', '1b', '1c']]),columns=['Name', 'Value', 'Updated'])
+                df3 = pd.DataFrame(columns=['Name', 'Value', 'Updated']) # currently, "Updated" feature not active
+                for j in range(len(lines)):
+                    str01 = lines[j].split('=')
+                    if len(str01) == 2:
+                        str01[0]=str01[0].rstrip()
+                        str01[0]=str01[0].lstrip()
+                        try:
+                            df2['Name']=str01[0]
+                            df2['Value']=float(str01[1])
+                            df2['Updated']=False
+                            df3=pd.concat([df3,df2],sort=False,ignore_index=True)
+                        except:
+                            pass
+            
+            # find index of preprocessor inputs
+            try: 
+                index1 = Sname_4ROM.index("Average_CurrentDensity")
+            except:
+                index1 = -1
+                try:
+                    J_fix = df3.loc[df3["Name"]=="Average_CurrentDensity","Value"].iloc[0]/10.0  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index2 = Sname_4ROM.index("Stack_Fuel_Utilization")
+            except:
+                index2 = -1
+                try:
+                    FU_fix = df3.loc[df3["Name"]=="Stack_Fuel_Utilization","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index3 = Sname_4ROM.index("Stack_Oxidant_Utilization")
+            except:
+                index3 = -1
+                try:
+                    AU_fix = df3.loc[df3["Name"]=="Stack_Oxidant_Utilization","Value"].iloc[0]/10.0  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index4 = Sname_4ROM.index("OxygenToCarbon_Ratio")
+            except:
+                index4 = -1
+                try:
+                    OCR_fix = df3.loc[df3["Name"]=="OxygenToCarbon_Ratio","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index5 = Sname_4ROM.index("Internal_Reforming")
+            except:
+                index5 = -1
+                try:
+                    IR_fix = df3.loc[df3["Name"]=="Internal_Reforming","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index6 = Sname_4ROM.index("Oxidant_Recirculation")
+            except:
+                index6 = -1
+                try:
+                    Arec_fix = df3.loc[df3["Name"]=="Oxidant_Recirculation","Value"].iloc[0]  
+                except:
+                    sys.exit('Code terminated: "preprocessor" input not defined')
+            try: 
+                index7= Sname_4ROM.index("PreReform")
+            except:
+                index7 = -1
+                try:
+                    PreReform_fix = df3.loc[df3["Name"]=="PreReform","Value"].iloc[0]  
+                except:
+                    # sys.exit('Code terminated: "preprocessor" input not defined')
+                    PreReform_fix=0.2 #[]
+            try: 
+                index8= Sname_4ROM.index("cellsize")
+            except:
+                index8 = -1
+                try:
+                    cellsize_fix = df3.loc[df3["Name"]=="cellsize","Value"].iloc[0]  
+                except:
+                    # sys.exit('Code terminated: "preprocessor" input not defined')
+                    cellsize_fix=550 #[cm2]
+                
+            if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                try: 
+                    index9 = Sname_4ROM.index("VGRRate")
+                except:
+                    index9 = -1
+                    try:
+                        VGR_fix = df3.loc[df3["Name"]=="VGRRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index11 = Sname_4ROM.index("VGRH2OPassRate")
+                except:
+                    index11 = -1
+                    try:
+                        H2OCap_fix = 1-df3.loc[df3["Name"]=="VGRH2OPassRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index12 = Sname_4ROM.index("VGRCO2CaptureRate")
+                except:
+                    index12 = -1
+                    try:
+                        CO2Cap_fix = df3.loc[df3["Name"]=="VGRCO2CaptureRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index13 = Sname_4ROM.index("VGRH2PassRate")
+                except:
+                    index13 = -1
+                    try:
+                        H2Cap_fix = 1-df3.loc[df3["Name"]=="VGRH2PassRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+                try: 
+                    index14 = Sname_4ROM.index("VGRCOConvertRate")
+                except:
+                    index14 = -1
+                    try:
+                        WGS_fix = df3.loc[df3["Name"]=="VGRCOConvertRate","Value"].iloc[0]  
+                    except:
+                        sys.exit('Code terminated: "preprocessor" input not defined')
+
+            # call preprocessor for trianing data
+            for i in range(S_4ROM_train.shape[0]):
+                if index1 == -1:
+                    J = J_fix
+                else:
+                    J = S_4ROM_train[i,index1]/10.0 # mA/cm2
+                if index2 == -1:
+                    FU = FU_fix
+                else:
+                    FU = S_4ROM_train[i,index2]
+                if index3 == -1:
+                    AU = AU_fix
+                else:
+                    AU = S_4ROM_train[i,index3]
+                if index4 == -1:
+                    OCR = OCR_fix
+                else:
+                    OCR = S_4ROM_train[i,index4]
+                if index5 == -1:
+                    IR = IR_fix
+                else:
+                    IR = S_4ROM_train[i,index5]
+                if index6 == -1:
+                    Arec = Arec_fix
+                else:
+                    Arec = S_4ROM_train[i,index6]
+                if index7 == -1:
+                    PreReform = PreReform_fix
+                else:
+                    PreReform = S_4ROM_train[i,index7]
+                if index8 == -1:
+                    cellsize = cellsize_fix # cm2
+                else:
+                    cellsize = S_4ROM_train[i,index8]
+                    
+                if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                    if index9 == -1:
+                        VGR = VGR_fix
+                    else:
+                        VGR = S_4ROM_train[i,index9]
+                    if index11 == -1:
+                        H2OCap = H2OCap_fix
+                    else:
+                        H2OCap = 1-S_4ROM_train[i,index11]
+                    if index12 == -1:
+                        CO2Cap = CO2Cap_fix
+                    else:
+                        CO2Cap = S_4ROM_train[i,index12]
+                    if index13 == -1:
+                        H2Cap = H2Cap_fix
+                    else:
+                        H2Cap = 1-S_4ROM_train[i,index13]
+                    if index14 == -1:
+                        WGS = WGS_fix
+                    else:
+                        WGS = S_4ROM_train[i,index14]
+                    
+                if preprocessor_name == None or preprocessor_name == 'NGFC_ccs':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'NGFC_nocc':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_nocc(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'IGFC_ccs': # IGFC: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize,igfc)
+                elif preprocessor_name == 'NGFC_ccs_vgr': # NGFC CCS VGR
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize)
+                elif preprocessor_name == 'IGFC_ccs_vgr': # IGFC VGR: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize,igfc)
+                else:
+                    sys.exit('Code terminated: the selected "preprocessor" cannot be found')
+
+                preprocessor_result_train[i,0] = np.sum(FuelOut)
+                preprocessor_result_train[i,1] = FuelOut[7]/np.sum(FuelOut)
+                preprocessor_result_train[i,2] = FuelOut[0]/np.sum(FuelOut)
+                preprocessor_result_train[i,3] = FuelOut[6]/np.sum(FuelOut)
+                preprocessor_result_train[i,4] = FuelOut[2]/np.sum(FuelOut)
+                preprocessor_result_train[i,5] = FuelOut[5]/np.sum(FuelOut)
+                preprocessor_result_train[i,6] = FuelOut[4]/np.sum(FuelOut)
+                preprocessor_result_train[i,7] = np.sum(AirOut)
+                preprocessor_result_train[i,8] = AirOut[3]/np.sum(AirOut)
+                preprocessor_result_train[i,9] = AirOut[4]/np.sum(AirOut)
+                preprocessor_result_train[i,10] = AirOut[0]/np.sum(AirOut)
+                preprocessor_result_train[i,11] = AirOut[2]/np.sum(AirOut)
+                preprocessor_result_train[i,12] = AirOut[1]/np.sum(AirOut)
+                preprocessor_result_train[i,13] = np.sum(FuelIn)
+                preprocessor_result_train[i,14] = FuelIn[7]/np.sum(FuelIn)
+                preprocessor_result_train[i,15] = FuelIn[0]/np.sum(FuelIn)
+                preprocessor_result_train[i,16] = FuelIn[6]/np.sum(FuelIn)
+                preprocessor_result_train[i,17] = FuelIn[2]/np.sum(FuelIn)
+                preprocessor_result_train[i,18] = FuelIn[5]/np.sum(FuelIn)
+                preprocessor_result_train[i,19] = FuelIn[4]/np.sum(FuelIn)
+
+                # # plot preprocessor results vs simulation results
+                # tempy1 = Y_4ROM_train[i,:].flatten()
+                # tempy2 = preprocessor_result_train[i,:].flatten()
+                # tempx = list(range(1, len(indY)+1))
+
+                # fig, ax = plt.subplots(figsize=(8,6))
+                # ax.plot(tempx, tempy1, 'ro-', linewidth = 2, 
+                #         markersize = 12, label = 'Simulation')
+                # ax.plot(tempx, tempy2, 'bd--', linewidth = 2, 
+                #         markersize = 12, label = 'Preprocessor')
+                # plt.legend(loc='upper left')
+                # ax.set(title = 'Results comparison of case '+str(i))
+                # FigureName = self.work_path + '/Case ' + str(i) +'.png'
+                # plt.savefig(FigureName)
+                # plt.show()
+                
+            # call preprocessor for validation data
+            for i in range(S_4ROM_vali.shape[0]):
+                if index1 == -1:
+                    J = J_fix
+                else:
+                    J = S_4ROM_vali[i,index1]/10.0 # mA/cm2
+                if index2 == -1:
+                    FU = FU_fix
+                else:
+                    FU = S_4ROM_vali[i,index2]
+                if index3 == -1:
+                    AU = AU_fix
+                else:
+                    AU = S_4ROM_vali[i,index3]
+                if index4 == -1:
+                    OCR = OCR_fix
+                else:
+                    OCR = S_4ROM_vali[i,index4]
+                if index5 == -1:
+                    IR = IR_fix
+                else:
+                    IR = S_4ROM_vali[i,index5]
+                if index6 == -1:
+                    Arec = Arec_fix
+                else:
+                    Arec = S_4ROM_vali[i,index6]
+                if index7 == -1:
+                    PreReform = PreReform_fix
+                else:
+                    PreReform = S_4ROM_vali[i,index7]
+                if index8 == -1:
+                    cellsize = cellsize_fix # cm2
+                else:
+                    cellsize = S_4ROM_vali[i,index8]
+                    
+                if preprocessor_name == 'NGFC_ccs_vgr' or preprocessor_name == 'IGFC_ccs_vgr':
+                    if index9 == -1:
+                        VGR = VGR_fix
+                    else:
+                        VGR = S_4ROM_vali[i,index9]
+                    if index11 == -1:
+                        H2OCap = H2OCap_fix
+                    else:
+                        H2OCap = 1-S_4ROM_vali[i,index11]
+                    if index12 == -1:
+                        CO2Cap = CO2Cap_fix
+                    else:
+                        CO2Cap = S_4ROM_vali[i,index12]
+                    if index13 == -1:
+                        H2Cap = H2Cap_fix
+                    else:
+                        H2Cap = 1-S_4ROM_vali[i,index13]
+                    if index14 == -1:
+                        WGS = WGS_fix
+                    else:
+                        WGS = S_4ROM_vali[i,index14]
+
+                if preprocessor_name == None or preprocessor_name == 'NGFC_ccs':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'NGFC_nocc':
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_nocc(J,FU,AU,OCR,IR,Arec,PreReform,cellsize)
+                elif preprocessor_name == 'IGFC_ccs': # IGFC: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs(J,FU,AU,OCR,IR,Arec,PreReform,cellsize,igfc)
+                elif preprocessor_name == 'NGFC_ccs_vgr': # NGFC CCS VGR
+                    FuelOut, AirOut, FuelIn,succ=self.NGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize)
+                elif preprocessor_name == 'IGFC_ccs_vgr': # IGFC VGR: conventional, Enhanced, Catalytic
+                    FuelOut, AirOut, FuelIn,succ=self.IGFC_ccs_vgr(J,FU,AU,OCR,IR,Arec,PreReform,VGR,H2OCap,CO2Cap,H2Cap,WGS,cellsize,igfc)
+                else:
+                    sys.exit('Code terminated: the selected "preprocessor" cannot be found')
+
+                preprocessor_result_vali[i,0] = np.sum(FuelOut)
+                preprocessor_result_vali[i,1] = FuelOut[7]/np.sum(FuelOut)
+                preprocessor_result_vali[i,2] = FuelOut[0]/np.sum(FuelOut)
+                preprocessor_result_vali[i,3] = FuelOut[6]/np.sum(FuelOut)
+                preprocessor_result_vali[i,4] = FuelOut[2]/np.sum(FuelOut)
+                preprocessor_result_vali[i,5] = FuelOut[5]/np.sum(FuelOut)
+                preprocessor_result_vali[i,6] = FuelOut[4]/np.sum(FuelOut)
+                preprocessor_result_vali[i,7] = np.sum(AirOut)
+                preprocessor_result_vali[i,8] = AirOut[3]/np.sum(AirOut)
+                preprocessor_result_vali[i,9] = AirOut[4]/np.sum(AirOut)
+                preprocessor_result_vali[i,10] = AirOut[0]/np.sum(AirOut)
+                preprocessor_result_vali[i,11] = AirOut[2]/np.sum(AirOut)
+                preprocessor_result_vali[i,12] = AirOut[1]/np.sum(AirOut)
+                preprocessor_result_vali[i,13] = np.sum(FuelIn)
+                preprocessor_result_vali[i,14] = FuelIn[7]/np.sum(FuelIn)
+                preprocessor_result_vali[i,15] = FuelIn[0]/np.sum(FuelIn)
+                preprocessor_result_vali[i,16] = FuelIn[6]/np.sum(FuelIn)
+                preprocessor_result_vali[i,17] = FuelIn[2]/np.sum(FuelIn)
+                preprocessor_result_vali[i,18] = FuelIn[5]/np.sum(FuelIn)
+                preprocessor_result_vali[i,19] = FuelIn[4]/np.sum(FuelIn)
+
+            ## 2.4 prepare training data 
+            # err_4ROM_train = preprocessor_result_train - Y_4ROM_train
+            # err_4ROM_vali = preprocessor_result_vali - Y_4ROM_vali
+            meanS=S_4ROM_train.mean(axis=0)
+            stdS=S_4ROM_train.std(axis=0)
+            meanY=Y_4ROM_train.mean(axis=0)
+            stdY=Y_4ROM_train.std(axis=0)
+            # meanerr=err_4ROM_train.mean(axis=0)
+            # stderr=err_4ROM_train.std(axis=0)
+
+            S_4ROM_train_nrm=(S_4ROM_train-meanS)/stdS
+            S_4ROM_vali_nrm=(S_4ROM_vali-meanS)/stdS
+            Y_4ROM_train_nrm=(Y_4ROM_train-meanY)/stdY
+            # err_4ROM_train_nrm=(err_4ROM_train-meanerr)/stderr
+
+            ## 2.4.1 concatenate preprocessor results with SOFC-MP inputs as ROM inputs
+            preprocessor_result_train_trim = np.delete(preprocessor_result_train, 5, 1)
+            preprocessor_result_vali_trim = np.delete(preprocessor_result_vali, 5, 1)
+            S_4ROM_train_with_mbm = np.concatenate((S_4ROM_train, preprocessor_result_train_trim),axis=1)
+            S_4ROM_vali_with_mbm = np.concatenate((S_4ROM_vali, preprocessor_result_vali_trim),axis=1)
+            meanS_with_mbm = S_4ROM_train_with_mbm.mean(axis=0)
+            stdS_with_mbm = S_4ROM_train_with_mbm.std(axis=0)
+            S_4ROM_train_with_mbm_nrm = (S_4ROM_train_with_mbm-meanS_with_mbm)/stdS_with_mbm
+            S_4ROM_vali_with_mbm_nrm = (S_4ROM_vali_with_mbm-meanS_with_mbm)/stdS_with_mbm
+
+            ## 2.4 write to info.dat, intraining.dat, info.dat and inCrossVali.dat 
+            with open(self.infoFile, 'w') as f:
+                f.write('input_col\toutput_col\n')
+                f.write(str(len(indS))+'\t'+str(len(indY))+'\n')
+            f1 = open(self.intrainingFile, 'w')
+            f3 = open(self.incrossvaliFile, 'w')
+            for i in range(len(indS)):
+                f1.write(Sname_4ROM[i] + '\t')
+                f3.write(Sname_4ROM[i] + '\t')
+            for i in range(len(indY)):
+                f1.write(Yname_4ROM[i] + '\t')
+                f3.write(Yname_4ROM[i] + '\t')
+            f1.write('\n')
+            f3.write('\n')
+            for i in range(len(restlist)):
+                for j in range(len(indS)):
+                    f1.write('{:11.4E}\t'.format(S_4ROM_train[i, j]))
+                for j in range(len(indY)):
+                    f1.write('{:11.4E}\t'.format(Y_4ROM_train[i, j]))
+                f1.write('\n')
+            for i in range(len(rndnumberlist)):
+                for j in range(len(indS)):
+                    f3.write('{:11.4E}\t'.format(S_4ROM_vali[i, j]))
+                for j in range(len(indY)):
+                    f3.write('{:11.4E}\t'.format(Y_4ROM_vali[i, j]))
+                f3.write('\n')
+            f1.close()
+            f3.close()
+
+            # # write simulation results and "preprocessor" results
+            # traininginput_file = self.intrainingFile
+            # traininginput_file_simu = traininginput_file.replace(".dat", "")+'_simu.dat'
+            # traininginput_file_wrap = traininginput_file.replace(".dat", "")+'_wrap.dat'
+
+            # f1 = open(traininginput_file_simu, 'w')
+            # f3 = open(traininginput_file_wrap, 'w')
+            # for i in range(len(indS)):
+            #     f1.write(Sname_4ROM[i] + '\t')
+            #     f3.write(Sname_4ROM[i] + '\t')
+            # for i in range(len(indY)):
+            #     f1.write(Yname_4ROM[i] + '\t')
+            #     f3.write(Yname_4ROM[i] + '\t')
+            # f1.write('\n')
+            # f3.write('\n')
+            # for i in range(len(restlist)):
+            #     for j in range(len(indS)):
+            #         f1.write('{:11.4E}\t'.format(S_4ROM_train[i, j]))
+            #         f3.write('{:11.4E}\t'.format(S_4ROM_train[i, j]))
+            #     for j in range(len(indY)):
+            #         f1.write('{:11.4E}\t'.format(Y_4ROM_train[i, j]))
+            #         f3.write('{:11.4E}\t'.format(preprocessor_result_train[i, j]))
+            #     f1.write('\n')
+            #     f3.write('\n')
+            # f1.close()
+            # f3.close()
+
+            ## 2.5 perform training and prediction
+            maxiteration = 50000
+            DNNsize = [32, 200, 200, 256]
+            Y_4ROM_vali_nrm_pre, ROM_values = self.DNNROM(maxiteration, S_4ROM_train_with_mbm_nrm, Y_4ROM_train_nrm, S_4ROM_vali_with_mbm_nrm, len(indS)+19, len(indY), DNNsize)
+
+            ## 2.6 save built ROM model
+            print('length of ROM_values: ', len(ROM_values))
+            
+            w1,w2,w3,w4,w5,b1,b2,b3,b4,b5 = ROM_values
+            with open(self.outtrainingFile, 'w') as f:
+                f.write('w1\n')
+                values_tmp = np.copy(w1)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w2\n')
+                values_tmp = np.copy(w2)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w3\n')
+                values_tmp = np.copy(w3)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w4\n')
+                values_tmp = np.copy(w4)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('w5\n')
+                values_tmp = np.copy(w5)
+                [row, col] = values_tmp.shape
+                for i in range(row):
+                    for j in range(col-1):
+                        f.write(str(values_tmp[i, j]) + ' ')
+                    f.write(str(values_tmp[i, col-1]) + '\n')
+                f.write('\n')
+                f.write('b1\n')
+                values_tmp = np.copy(b1)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b2\n')
+                values_tmp = np.copy(b2)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b3\n')
+                values_tmp = np.copy(b3)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b4\n')
+                values_tmp = np.copy(b4)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('b5\n')
+                values_tmp = np.copy(b5)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('meanS\n')
+                values_tmp = np.copy(meanS)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('meanY\n')
+                values_tmp = np.copy(meanY)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('stdS\n')
+                values_tmp = np.copy(stdS)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                f.write('stdY\n')
+                values_tmp = np.copy(stdY)
+                row = len(values_tmp)
+                for i in range(row):
+                    f.write(str(values_tmp[i]) + '\n')
+                f.write('\n')
+                # f.write('meanerr\n')
+                # values_tmp = np.copy(meanerr)
+                # row = len(values_tmp)
+                # for i in range(row):
+                #     f.write(str(values_tmp[i]) + '\n')
+                # f.write('\n')
+                # f.write('stderr\n')
+                # values_tmp = np.copy(stderr)
+                # row = len(values_tmp)
+                # for i in range(row):
+                #     f.write(str(values_tmp[i]) + '\n')
+                # f.write('\n')
+                f.write('end\n')
+
+                # add contents of info.dat, inTraining.dat to outTraining.dat
+                f.write('\n')
+                f.write('input_output_col\n')
+                f.write(str(len(indS))+'\t'+str(len(indY))+'\n')
+
+                f.write('\n')
+                for i in indS:
+                    f.write(Sname[i-1] + '\t')
+                for i in indY:
+                    f.write(Yname[i-1] + '\t')
+                f.write('\n')
+                for i in range(S_row):
+                    for j in indS:
+                        f.write('{:11.4E}\t'.format(Svalue_new[i, j-1]))
+                    for j in indY:
+                        f.write('{:11.4E}\t'.format(Yvalue_new[i, j-1]))
+                    f.write('\n')
+
+            ## 2.7 write to ourCrossVali.dat
+            # err_4ROM_vali_pre = err_4ROM_vali_nrm_pre*stderr+meanerr
+            # Y_4ROM_vali_pre = preprocessor_result_vali-err_4ROM_vali_pre
+            Y_4ROM_vali_pre = Y_4ROM_vali_nrm_pre*stdY+meanY
             f0 = open(self.outcrossvaliFile, 'w')
             for i in range(len(indY)):
                 name = Yname_4ROM[i]
@@ -15724,6 +19789,8 @@ class PhyDNN():
             ############# Step 5: perform prediction of SimulationStatus #############
             X_nrm_4cls = np.concatenate((X_nrm, Xy_nrm_4cls, succs_Xy_nrm),axis=1)
             
+            Xy_cls = np.zeros(X_row)
+
             for j in range(X_row):
                 inputX_cls = X_nrm_4cls[j,:]
                 m1_cls = np.matmul(inputX_cls,w1_cls)
@@ -15738,12 +19805,12 @@ class PhyDNN():
                     m2ba_cls[i] = m2b_cls[i]
 
                 outputX_cls = m2ba_cls
-                if j == 0:
-                    Xy_cls = outputX_cls
-                else:
-                    Xy_cls = np.vstack((Xy_cls, outputX_cls))
-            #convert to 0 and 1
-            Xy_cls = np.argmax(Xy_cls, 1)
+                Xy_cls[j] = np.argmax(outputX_cls)
+
+                # if j == 0:
+                #     Xy_cls = np.argmax(outputX_cls)
+                # else:
+                #     Xy_cls = np.vstack((Xy_cls, np.argmax(outputX_cls)))
             
         ############# Step 6: Load the trained model for ROM #############
         print('Step 6: Load the trained model (outtrainingFile)')
@@ -16109,9 +20176,12 @@ class PhyDNN():
         names_input, units_input, names_output, units_output = self.variable_options()
         Yunit = []
         for i in range(len(Yname)):
-            tempindex = names_output.index(Yname[i])
-            tempunit = units_output[tempindex]
-            Yunit.append(tempunit)
+            try:
+                tempindex = names_output.index(Yname[i])
+                tempunit = units_output[tempindex]
+                Yunit.append(tempunit)
+            except:
+                Yunit.append('Unknown')
             
         # compute confidence interval
         interval_all = np.zeros((len(Yname),),dtype=np.float64)
@@ -16160,9 +20230,12 @@ class PhyDNN():
         names_input, units_input, names_output, units_output = self.variable_options()
         Yunit = []
         for i in range(len(Yname)):
-            tempindex = names_output.index(Yname[i])
-            tempunit = units_output[tempindex]
-            Yunit.append(tempunit)
+            try:
+                tempindex = names_output.index(Yname[i])
+                tempunit = units_output[tempindex]
+                Yunit.append(tempunit)
+            except:
+                Yunit.append('Unknown')
         
         # compute confidence percentage
         percentage_all = np.zeros((len(Yname),),dtype=np.float64)

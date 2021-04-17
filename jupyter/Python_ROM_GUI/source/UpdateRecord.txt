@@ -1,0 +1,9 @@
+12/16/2020:
+sofc executable for linux updated (for non-vgr cases only)
+
+01/04/2021:
+sofc executable for windows updated (for non-vgr cases only)
+
+04/03/2021:
+sofc_soec executable for linux updated (for non-vgr, vgr and soec cases)
+
