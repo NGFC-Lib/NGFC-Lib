@@ -1,0 +1,26 @@
+oT 500 1000
+fT 500 1000
+pH2 0.4 0.97
+pH2O 0.03 0.6
+Th_a 150 500
+Th_e 5 10
+Th_c 20 100
+Th_ic 5 2000
+Por_a 30 50
+Por_c 25 50
+Tort_a 2.5 3.8
+Tort_c 2.4 3.8
+S_e 
+S_ic 
+S_c
+S_a
+Ri
+BV_Eact
+BV_prexp
+BV_alpha 0.3 0.7
+De_a
+Ne_a
+De_c
+Ne_c
+D0_am 0.2 2.0
+D0_cm 0.2 2.0
