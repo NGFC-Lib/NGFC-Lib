@@ -84,8 +84,8 @@ def IV_new_2(oT,fT,J,pO2air,pN2air,pH2,pH2O,pCO,pCO2,pCH4,pN2,pSys,
     if BVflag==0:
     #  -- Old method###### BV_prexp(scaled) = BV_prexp/10000
     ####### BV_Eact(scaled) = BV_Eact/R/T
-        i0=BV_prexp*math.exp(-BV_Eact)
-        BV=(R*Tk/BV_alpha/F)*math.log((J/2.0/(i0*10000))+math.sqrt((J/2.0/(i0*10000))**2+1))
+         
+        BV=(R*Tk/BV_alpha/F)*math.log((J/2.0/(i0))+math.sqrt((J/2.0/(i0))**2+1))
     else:
     #  -- New method
         ioeff_f=BV_prexp2f*math.exp(-BV_Eact2f/R/Tk)*pO2anode**BV_gamma2f
